@@ -2,8 +2,7 @@
 
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
-> **Status: first version, not yet verified on a Mac.**
-> The code was written in an environment without a Swift toolchain or macOS, so it has **not been compiled, run, or tested yet**. The automated tests exist but have not been executed. Expect to fix a few compile errors on first build. See [Verification status](#verification-status).
+> **Status: first version.** It builds, and the 141 unit tests pass, on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
 
 ## What it does
 
@@ -107,7 +106,7 @@ This app does not and cannot promise perfect replay.
 
 These are design limits, not bugs. Items marked **untested** have not been observed on a real Mac yet.
 
-- **Nothing has been compiled or run yet.** See [Verification status](#verification-status).
+- **Recording and playback have not been tried on a real Mac yet.** Only the build and the core-logic unit tests have been run.
 - Recording fidelity is below playback fidelity. Events are timestamped when the app receives them on the main thread, so timing can be off by a few milliseconds, more if the Mac is busy.
 - Mouse movement is sampled (default: at most every 30 ms and 3 points apart). Playback reproduces the path approximately, not pixel for pixel.
 - Scroll events within 80 ms of each other are combined into one action.
@@ -159,12 +158,12 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 
 | Item | Status |
 | --- | --- |
-| Code compiles | **Not verified.** No Swift toolchain was available when the code was written. |
-| Unit tests pass | **Not verified.** They have not been run. CI will run them on macOS once pushed. |
-| Recording / playback on a real Mac | **Not verified.** |
-| Universal (arm64 + x86_64) build | **Not verified.** |
+| Code compiles | **Verified** on macOS 27.2, Xcode, Swift 6.4, Apple Silicon (a release build succeeded). Other macOS/Xcode versions untested. |
+| Unit tests pass | **Verified**: 141 tests, 0 failures, same machine. They cover only the core logic. |
+| Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
+| Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
-Manual checklist after your first successful build:
+Manual checklist (not done yet):
 
 1. Grant both permissions; confirm both show **Granted**.
 2. Record: click somewhere in TextEdit, type a sentence, stop. Check the list matches.
@@ -201,7 +200,7 @@ Closing the window leaves the app running in the menu bar. Choose **Show Window*
 Only the Command Line Tools are installed. Install Xcode from the Mac App Store, open it once, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`, and build again.
 
 **Build errors.**
-Check `swift --version` (5.9 or newer) and macOS 13 or newer. Open an issue and paste the first error. Because the code has never been compiled, a few errors are likely.
+Check `swift --version` (5.9 or newer) and macOS 13 or newer. Open an issue and paste the first error. 
 
 ## Code signing and notarization
 
