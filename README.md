@@ -14,6 +14,8 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 - **Save**: macros are stored as versioned JSON, with autosave, rename, duplicate, import, export and automatic backups.
 - **Settings window**: recording options, playback defaults, storage, permissions and privacy.
 - **Menu bar item** that shows `REC 0:12` while recording and has Stop / Emergency Stop, so you can always stop even when the window is hidden.
+- **Check macro** (the **Check** button above the action list): fixed rules that flag common causes of unreliable or risky macros, each with a one-click fix where one exists. Examples: no foreground check, hundreds of mouse-move actions, long idle pauses, a changed display size, typed text that looks like a password, and a loop that could send messages very quickly.
+- **AI review** (optional, inside Check macro): advice from Apple's on-device language model, which runs on your Mac. See [Check macro and AI review](#check-macro-and-ai-review).
 - **Discord presets** (optional): keyboard-only building blocks that use Discord's Quick Switcher (`⌘K`). The app contains **no hardcoded screen coordinates**.
 
 ## Requirements
@@ -119,6 +121,30 @@ These are design limits, not bugs. Items marked **untested** have not been obser
 - Ad-hoc code signing means macOS treats each rebuild as a new app for privacy permissions.
 - The emergency-stop shortcut needs Input Monitoring. If that is missing, use the Emergency Stop button or the menu bar item.
 
+## Check macro and AI review
+
+Click **Check** above the action list.
+
+**Built-in checks** are fixed rules, not AI. They run on your Mac, always. Each finding explains the problem, and some have a button to fix it:
+
+| Check | Fix offered |
+| --- | --- |
+| Many mouse-move actions | Remove mouse movements (the pointer jumps straight to each click) |
+| Pauses longer than 10 s | Shorten them to 2 s |
+| Foreground check is off | Turn it on |
+| Text and Return repeated 5+ times (or looped) with under 3 s between repeats | Set 5 s between repeats |
+| Typed text that looks like a password, or a changed display size | Warning only |
+
+The password check is a guess based on the shape of the text, and can be wrong either way.
+
+**AI review** uses Apple's on-device Foundation Models framework. It needs macOS 26 or newer on a Mac with Apple Intelligence turned on, and the app must have been built with an Xcode that includes that framework. It can review a macro in plain language and suggest a name.
+
+- It runs on your Mac. The app has no network code and sends nothing anywhere.
+- It receives a short text summary of the steps (typed text included), not the macro file.
+- It only gives advice. It never edits a macro.
+- It can be wrong, and the on-device model is small. Treat its answers as suggestions.
+- If the model is unavailable, the section says why and the built-in checks still work.
+
 ## Privacy and safety
 
 - Recording happens only after you click **Start Recording**, and stops when you stop it. There is no background recording and no hidden keylogger. The window header and menu bar show a red recording indicator the whole time.
@@ -133,11 +159,12 @@ These are design limits, not bugs. Items marked **untested** have not been obser
 ```
 Sources/MacActionRecorderCore/   Platform-independent logic: recording format, validation,
                                  recording builder, editing, speed math, playback engine,
-                                 settings, storage. Foundation only.
+                                 settings, storage, macro checks. Foundation only.
 Sources/MacActionRecorder/       macOS app: CGEvent recorder and performer, permissions,
                                  SwiftUI views, menu bar item.
 Tests/MacActionRecorderCoreTests/  Unit tests for the core.
 Samples/                         A sample macro with no personal data.
+Resources/                       Info.plist, app icon (AppIcon.svg and the rendered iconset).
 docs/RECORDING_FORMAT.md         File format reference.
 scripts/build_app.sh             Builds, bundles, ad-hoc signs and zips the app.
 init/setup.sh                    One-shot setup for a new Mac.
@@ -161,6 +188,7 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 | Code compiles | **Verified** on macOS 27.2, Xcode, Swift 6.4, Apple Silicon (a release build succeeded). Other macOS/Xcode versions untested. |
 | Unit tests pass | **Verified**: 141 tests, 0 failures, same machine. They cover only the core logic. |
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
+| Check macro, AI review, app icon (added after the results above) | **Not yet built or run.** The check rules have unit tests that have not been run yet. The AI review calls Apple's Foundation Models API, which has not been exercised at all. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):

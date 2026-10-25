@@ -8,6 +8,7 @@ struct EditorView: View {
     @State private var editing: MacroAction?
     @State private var showWaitSheet = false
     @State private var showPresetSheet = false
+    @State private var showCheckSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +33,9 @@ struct EditorView: View {
         .sheet(isPresented: $showPresetSheet) {
             PresetSheet(afterID: insertionPoint)
         }
+        .sheet(isPresented: $showCheckSheet) {
+            MacroCheckSheet()
+        }
         .onChange(of: model.selectedID) { _ in
             selection = []
         }
@@ -43,6 +47,12 @@ struct EditorView: View {
         HStack(spacing: 6) {
             Text("Actions")
                 .font(.headline)
+            Button {
+                showCheckSheet = true
+            } label: {
+                Label("Check", systemImage: "checkmark.shield")
+            }
+            .help("Check this macro for common problems, with an optional on-device AI review")
             Spacer()
 
             Group {

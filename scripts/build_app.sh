@@ -78,6 +78,13 @@ cp "$EXECUTABLE" "$APP_DIR/Contents/MacOS/MacActionRecorder"
 sed -e "s/__VERSION__/${VERSION}/g" -e "s/__BUILD__/${BUILD_NUMBER}/g" \
     Resources/Info.plist > "$APP_DIR/Contents/Info.plist"
 
+if [[ -d Resources/AppIcon.iconset ]]; then
+    echo "==> Building the app icon"
+    if ! iconutil -c icns Resources/AppIcon.iconset -o "$APP_DIR/Contents/Resources/AppIcon.icns"; then
+        echo "warning: could not build the app icon; continuing without it." >&2
+    fi
+fi
+
 echo "==> Signing (identity: ${IDENTITY})..."
 codesign --force --deep --sign "$IDENTITY" "$APP_DIR"
 codesign --verify --verbose=2 "$APP_DIR" || true

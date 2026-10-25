@@ -459,6 +459,10 @@ final class AppModel: ObservableObject {
         selectedID = recording.id
         markChanged(recording.id)
         status = .stopped("Recorded \(actions.count) actions")
+        let flagged = findings().filter { $0.severity == .warning }.count
+        if flagged > 0 {
+            warnings.append("The macro check found \(flagged) thing(s) worth a look. Click Check above the action list.")
+        }
         if !warnings.isEmpty {
             showNotice(warnings.joined(separator: " "))
         }
@@ -820,6 +824,45 @@ final class AppModel: ObservableObject {
         var applied = false
         edit { recording in applied = recording.replaceAction(action) }
         return applied
+    }
+
+    // MARK: Macro check
+
+    /// Built-in checks for the selected macro, using the current playback controls and settings.
+    func findings() -> [MacroFinding] {
+        guard let recording = current else { return [] }
+        return MacroAnalyzer.analyze(
+            recording: recording,
+            playback: currentDefaults,
+            verifyForeground: settings.verifyForeground,
+            currentScreen: Platform.primaryScreenSize()
+        )
+    }
+
+    func applyFix(_ fix: MacroFix) {
+        switch fix {
+        case .removeMouseMoves:
+            edit { recording in
+                let ids = Set(recording.actions.filter { $0.kind == .move }.map { $0.id })
+                recording.deleteActions(ids: ids)
+            }
+        case .capLongPauses(let maxSeconds):
+            edit { recording in
+                for index in recording.actions.indices {
+                    if recording.actions[index].delay > maxSeconds {
+                        recording.actions[index].delay = maxSeconds
+                    }
+                    if recording.actions[index].kind == .wait,
+                       let duration = recording.actions[index].duration, duration > maxSeconds {
+                        recording.actions[index].duration = maxSeconds
+                    }
+                }
+            }
+        case .setLoopDelay(let seconds):
+            loopDelay = seconds
+        case .enableForegroundCheck:
+            settings.verifyForeground = true
+        }
     }
 
     // MARK: Saving

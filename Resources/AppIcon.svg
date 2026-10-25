@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Original artwork for Mac Action Recorder: a pointer with a record dot. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="#212836"/>
+  <path d="M312 236 L312 706 L436 592 L530 806 L632 764 L540 556 L712 556 Z"
+        fill="#FFFFFF" stroke="#212836" stroke-width="20" stroke-linejoin="round"/>
+  <circle cx="722" cy="722" r="140" fill="#212836"/>
+  <circle cx="722" cy="722" r="112" fill="#FF453A"/>
+</svg>
