@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Added (not yet compiled or run):
+
+- Auto-update from the GitHub repository: version check, background build, one-click Restart to Update. Settings > Updates, menu bar item "Check for Updates…". `VERSION` file is now the source of the app version.
+
 Fixed (not yet compiled or run):
 
 - Permissions appearing "not granted" after being switched on: builds now use a stable local signing certificate (falls back to ad-hoc), the Input Monitoring check tests a real event tap when the system's quick check says no, and the permission banner has Quit and Reopen.

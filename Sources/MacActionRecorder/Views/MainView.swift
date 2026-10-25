@@ -84,6 +84,7 @@ struct BannerArea: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            UpdateBanner()
             if !model.accessibilityGranted || !model.inputMonitoringGranted {
                 PermissionBanner()
             }

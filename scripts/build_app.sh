@@ -4,7 +4,7 @@
 #
 # Usage:   ./scripts/build_app.sh
 # Options (environment variables):
-#   VERSION            Marketing version written to Info.plist (default 0.1.0)
+#   VERSION            Marketing version written to Info.plist (default: the VERSION file)
 #   BUILD_NUMBER       Build number written to Info.plist (default 1)
 #   CODESIGN_IDENTITY  Signing identity. If unset, a local self-signed certificate is created
 #                      on first use (see scripts/ensure_signing_identity.sh) so macOS privacy
@@ -17,7 +17,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-VERSION="${VERSION:-0.1.0}"
+if [[ -z "${VERSION:-}" ]]; then
+    if [[ -f VERSION ]]; then
+        VERSION="$(tr -d '[:space:]' < VERSION)"
+    else
+        VERSION="0.1.0"
+    fi
+fi
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 IDENTITY="${CODESIGN_IDENTITY:-}"
 APP_DIR="build/Mac Action Recorder.app"
@@ -78,6 +84,10 @@ echo "==> Assembling app bundle: $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$EXECUTABLE" "$APP_DIR/Contents/MacOS/MacActionRecorder"
+if [[ -f scripts/update.sh ]]; then
+    cp scripts/update.sh "$APP_DIR/Contents/Resources/update.sh"
+    chmod +x "$APP_DIR/Contents/Resources/update.sh"
+fi
 sed -e "s/__VERSION__/${VERSION}/g" -e "s/__BUILD__/${BUILD_NUMBER}/g" \
     Resources/Info.plist > "$APP_DIR/Contents/Info.plist"
 

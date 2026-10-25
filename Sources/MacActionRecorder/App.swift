@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Makes `swift run` (no app bundle) behave like a normal windowed app as well.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // Look for updates shortly after launch, then every few hours (if enabled in Settings).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            UpdateManager.shared.startSchedule()
+        }
     }
 
     /// The app keeps running in the menu bar after the window is closed, so a running macro

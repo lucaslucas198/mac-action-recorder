@@ -18,6 +18,7 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 - **Improve this macro** (inside Check): proposes shortening and fixing steps (remove mouse paths, join split typing, wait before typing that follows a click, shorten long pauses). You tick what to apply, and can undo.
 - **AI features** (optional, on-device, need macOS 26+ with Apple Intelligence): AI suggestions for the Improve list, **Draft steps with AI** (describe what you want in words; get keyboard steps to review), a plain-language review, and name suggestions. See [Check macro and AI review](#check-macro-and-ai-review).
 - **Show Clicks**: draws numbered markers on screen where a macro will click, so a moved window is easy to spot before you play.
+- **Auto-update** from this GitHub repository (see [Updates](#updates)): the app notices a newer version, builds it in the background, and installs it when you click Restart to Update.
 - **Play Macro** submenu in the menu bar for starting a saved macro without opening the window.
 - **Discord presets** (optional): keyboard-only building blocks that use Discord's Quick Switcher (`⌘K`). The app contains **no hardcoded screen coordinates**.
 
@@ -159,18 +160,34 @@ The password check is a guess based on the shape of the text, and can be wrong e
 
 **AI review** uses Apple's on-device Foundation Models framework. It needs macOS 26 or newer on a Mac with Apple Intelligence turned on, and the app must have been built with an Xcode that includes that framework. It can review a macro in plain language and suggest a name.
 
-- It runs on your Mac. The app has no network code and sends nothing anywhere.
+- It runs on your Mac and sends nothing anywhere.
 - It receives a short text summary of the steps (typed text included), not the macro file.
 - The review text and name suggestion change nothing by themselves. Edits only happen through **Improve this macro**, after you choose them.
 - It can be wrong, and the on-device model is small. Treat its answers as suggestions.
 - If the model is unavailable, the section says why; the built-in checks and the rule-based improvements still work.
+
+## Updates
+
+The app checks this repository for a newer version shortly after launch and then every few hours (Settings > Updates, on by default).
+
+1. **Check:** it reads one text file, `VERSION`, from `raw.githubusercontent.com/<this repo>/main`. That is the only network request. It sends no recordings, settings or personal data (GitHub sees your IP address, like any web request).
+2. **Build:** if the version is newer, the app downloads the newest source from the same repository and builds it with Xcode in the background. It needs the same Xcode you used to install it. The installed app is not touched.
+3. **Install:** a banner says the update is ready. **Restart to Update** replaces the app and reopens it. Nothing is installed without that click.
+
+Notes:
+
+- The update runs code from this repository's `main` branch, which whoever can push to it controls. If you do not want that, turn the checks off in Settings > Updates and update manually with `git pull` and `./init/setup.sh`.
+- The version number comes from the `VERSION` file. **Bump it whenever you push a change you want installed apps to pick up**; otherwise they will not notice.
+- Updates are built with the same local signing certificate as your first build, so macOS permissions should carry over. This is expected but has not been verified.
+- Your first install, and any copy built before this feature existed, must be updated by hand once (`git pull`, `./init/setup.sh`, copy to `/Applications`).
+- Updating is unavailable when the app is started with `swift run`, because there is no app bundle to replace.
 
 ## Privacy and safety
 
 - Recording happens only after you click **Start Recording**, and stops when you stop it. There is no background recording and no hidden keylogger. The window header and menu bar show a red recording indicator the whole time.
 - The emergency-stop key listener runs only while a recording or playback is active.
 - Recordings are plain JSON files in `~/Library/Application Support/Mac Action Recorder/Recordings` (or the folder you choose). Typed text is stored as typed, **so a recording may contain passwords or private messages**. Delete such recordings, and be careful before exporting or sharing a file.
-- The app has no network code and sends nothing anywhere.
+- Recordings and settings are never sent anywhere. The only network use is the optional update check (see [Updates](#updates)), which you can turn off.
 - Playback only posts mouse and keyboard events. A recording cannot run shell commands or scripts, and files with invalid or out-of-range values are rejected before playback.
 - Do not use this tool to violate the rules of any service you use. Discord's Terms of Service and Community Guidelines restrict some kinds of automation (for example spam, and automating user accounts in ways Discord forbids). You are responsible for how you use macros. Check Discord's current terms before relying on repeated automated messages.
 
@@ -211,7 +228,7 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 | Unit tests pass | **Verified**: 155 tests, 0 failures, same machine (includes the 14 macro-check tests). They cover only the core logic. |
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
 | Check macro, AI review, app icon | **Compiles and builds** (icon generation ran without warnings; the 14 check-rule tests pass). **Not yet run in the app:** the Check sheet UI, and the AI review, which calls Apple's Foundation Models API. |
-| Improve this macro, Draft steps with AI, Show Clicks, Play Macro menu, permission rescue buttons, Install.command | **Written but not compiled or run.** Their core logic has unit tests that have not been executed. If the build fails, the first `error:` line says which file. |
+| Improve this macro, Draft steps with AI, Show Clicks, Play Macro menu, permission rescue buttons, stable local signing, auto-update, Install.command | **Written but not compiled or run.** Their core logic has unit tests that have not been executed. If the build fails, the first `error:` line says which file. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):

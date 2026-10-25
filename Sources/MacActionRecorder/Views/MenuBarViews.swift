@@ -74,6 +74,7 @@ struct MenuBarContent: View {
                 openWindow(id: "settings")
                 NSApp.activate(ignoringOtherApps: true)
             }
+            Button("Check for Updates…") { UpdateManager.shared.check(userInitiated: true) }
             Divider()
             Button("Quit Mac Action Recorder") { NSApp.terminate(nil) }
         }

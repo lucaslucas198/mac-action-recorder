@@ -13,6 +13,8 @@ struct SettingsView: View {
                 .tabItem { Label("Storage", systemImage: "externaldrive") }
             PermissionsSettingsTab()
                 .tabItem { Label("Permissions & Privacy", systemImage: "lock.shield") }
+            UpdatesSettingsTab()
+                .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
         }
         .frame(minWidth: 580, minHeight: 540)
     }
@@ -331,7 +333,7 @@ struct PermissionsSettingsTab: View {
 
             Section("What happens to recordings") {
                 bullet("They are saved as plain, readable JSON files on this Mac. Typed text is stored as typed, so a recording can contain passwords or private messages.")
-                bullet("Nothing is uploaded or sent anywhere. The app has no network code. A file leaves this Mac only if you export or copy it yourself.")
+                bullet("Recordings are never uploaded or sent anywhere. The only network use is the optional update check (Updates tab), which reads one version file from GitHub. A file leaves this Mac only if you export or copy it yourself.")
                 bullet("Playback only posts normal mouse and keyboard events. Recordings cannot run shell commands or scripts.")
             }
 

@@ -37,6 +37,13 @@ public struct AppSettings: Codable, Equatable {
     // Privacy
     public var acknowledgedRecordingWarning = false
 
+    // Updates
+    /// Look for a newer version on GitHub (a single read-only request, at most every few hours).
+    public var checkForUpdates = true
+    /// Download and build a newer version in the background. It is only installed when you
+    /// choose Restart to Update.
+    public var autoBuildUpdates = true
+
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -63,6 +70,8 @@ public struct AppSettings: Codable, Equatable {
         backupKeepCount = c.value(.backupKeepCount, backupKeepCount)
         backupDirectoryPath = c.optionalValue(.backupDirectoryPath, backupDirectoryPath)
         acknowledgedRecordingWarning = c.value(.acknowledgedRecordingWarning, acknowledgedRecordingWarning)
+        checkForUpdates = c.value(.checkForUpdates, checkForUpdates)
+        autoBuildUpdates = c.value(.autoBuildUpdates, autoBuildUpdates)
     }
 
     /// Returns a copy with every value forced into a safe range.
