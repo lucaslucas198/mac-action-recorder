@@ -25,7 +25,17 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 
 ## Install on another Mac
 
-### Option A: build from source (works today)
+### Easiest: download the zip and double-click
+
+1. On the repository page click **Code > Download ZIP**, then double-click the downloaded zip to unpack it.
+2. Install **Xcode** from the Mac App Store if you do not have it (free, several GB), and open it once.
+3. In the unpacked folder, **right-click `Install.command` > Open > Open** (a plain double-click is blocked the first time because the file came from the internet).
+4. Wait for it to finish. It builds the app, copies it to `/Applications`, and opens it. It may ask for your Mac password to accept Xcode's license.
+5. In the app, open **Settings > Permissions & Privacy** and switch on Input Monitoring and Accessibility.
+
+Everything the build needs is in the zip. The first build needs an internet connection only if Xcode has to download components.
+
+### Option A: build from source in Terminal
 
 ```bash
 git clone https://github.com/<your-username>/mac-action-recorder.git

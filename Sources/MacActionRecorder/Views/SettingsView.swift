@@ -282,6 +282,7 @@ struct StorageSettingsTab: View {
 
 struct PermissionsSettingsTab: View {
     @EnvironmentObject private var model: AppModel
+    @State private var confirmReset = false
 
     var body: some View {
         Form {
@@ -305,6 +306,22 @@ struct PermissionsSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("App missing from the lists, or switched on but still not working?") {
+                Text("1. Click Request above: macOS then adds the app to the list by itself. 2. If it is still missing, click the + button in the list, press ⌘⇧G, paste the path below, and choose the app. 3. After switching a permission on, use Quit and Reopen. 4. If a permission shows as switched on but is not granted here, reset this app's entries and request again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Permissions.appURL.path)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                HStack {
+                    Button("Show App in Finder") { Permissions.revealAppInFinder() }
+                    Button("Copy App Path") { Permissions.copyAppPath() }
+                    Button("Reset This App's Permissions…") { confirmReset = true }
+                    Button("Quit and Reopen") { Permissions.relaunch() }
+                }
+            }
+
             Section("What this app records") {
                 bullet("Only while you have clicked Start Recording and until you stop it. A red indicator shows in the window and the menu bar the whole time.")
                 bullet("Mouse position, clicks, scrolling, and the keys you press, in any app.")
@@ -325,6 +342,25 @@ struct PermissionsSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Reset this app's permission entries?",
+            isPresented: $confirmReset,
+            titleVisibility: .visible
+        ) {
+            Button("Reset", role: .destructive) {
+                let done = Permissions.resetStoredPermissions()
+                model.refreshPermissions()
+                model.showNotice(
+                    done
+                        ? "Permission entries cleared. Click Request for each permission, switch it on, then use Quit and Reopen."
+                        : "Could not reset the entries. Remove the app from each list with the minus button instead.",
+                    isError: !done
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes Mac Action Recorder from the Accessibility and Input Monitoring lists. Nothing else is touched. You will need to grant both again.")
+        }
     }
 
     private func bullet(_ text: String) -> some View {
