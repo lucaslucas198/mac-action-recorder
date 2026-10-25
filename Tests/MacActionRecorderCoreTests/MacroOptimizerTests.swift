@@ -258,7 +258,7 @@ final class MacroOptimizerTests: XCTestCase {
         """)
         XCTAssertEqual(draft.actions.map { $0.kind }, [.key, .text, .key, .text, .key])
         XCTAssertEqual(draft.actions[0].keyCode, KeyCodes.ansiK)
-        XCTAssertEqual(draft.actions[0].modifiers, [.command])
+        XCTAssertEqual(draft.actions[0].modifiers, KeyModifiers.command)
         XCTAssertEqual(draft.actions[3].text, "Hello everyone!")
         XCTAssertEqual(draft.actions[0].delay, 0)
         XCTAssertEqual(draft.actions[1].delay, AIMacroDrafter.afterShortcutDelay)
@@ -285,7 +285,7 @@ final class MacroOptimizerTests: XCTestCase {
         ```
         """)
         XCTAssertEqual(draft.actions.count, 2)
-        XCTAssertEqual(draft.actions[0].modifiers, [.control, .option])
+        XCTAssertEqual(draft.actions[0].modifiers, KeyModifiers([.control, .option]))
         XCTAssertEqual(draft.actions[1].text, "quoted text")
         XCTAssertEqual(draft.skippedLines, 2)
     }

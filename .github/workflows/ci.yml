@@ -20,6 +20,9 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Check shell scripts parse
+        run: bash -n Install.command && bash -n init/setup.sh && bash -n scripts/build_app.sh
+
       - name: Build (debug)
         run: swift build
 

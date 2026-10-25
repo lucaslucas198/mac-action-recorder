@@ -53,18 +53,18 @@ public enum AIMacroDrafter {
             switch verb {
             case "KEY":
                 if let parsed = parseKey(rest) {
-                    action = .key(parsed.keyCode, modifiers: parsed.modifiers)
+                    action = MacroAction.key(parsed.keyCode, modifiers: parsed.modifiers)
                 }
             case "TYPE":
                 let text = unquote(rest)
                 if !text.isEmpty && text.count <= maxTextLength {
-                    action = .text(text)
+                    action = MacroAction.text(text)
                 }
             case "WAIT":
                 let letters = CharacterSet.letters
                 if let seconds = Double(rest.lowercased().trimmingCharacters(in: letters.union(.whitespaces))),
                    seconds.isFinite {
-                    action = .wait(min(maxWait, max(minWait, seconds)))
+                    action = MacroAction.wait(min(maxWait, max(minWait, seconds)))
                 }
             default:
                 break
