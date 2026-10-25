@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain info
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Run unit tests
+        run: swift test
+
+      - name: Build app bundle
+        run: ./scripts/build_app.sh
+        env:
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-ci' }}
+          BUILD_NUMBER: ${{ github.run_number }}
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacActionRecorder-macOS
+          path: build/MacActionRecorder-*-macOS.zip
+          if-no-files-found: error
+
+  release:
+    # Publishes the zip to GitHub Releases when you push a tag such as v0.1.0.
+    # The app is ad-hoc signed and NOT notarized (no Apple Developer credentials
+    # are used here). See README > "Code signing and notarization".
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: MacActionRecorder-macOS
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
