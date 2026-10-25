@@ -62,7 +62,7 @@ Then grant the two permissions the first time you use it
     1. Accessibility      - required to play back clicks and typing
     2. Input Monitoring   - required to record clicks and typing
 
-Rebuilding changes the app's ad-hoc signature, which macOS can treat as a new app.
-If recording/playback stops working after a rebuild, remove the app from both lists
-and add it again. See README.md > Troubleshooting.
+The build signs with a local certificate so permissions normally survive rebuilds.
+If recording/playback stops working after a rebuild, use Settings > Permissions & Privacy
+> Reset This App's Permissions and grant both again. See README.md > Troubleshooting.
 EOF

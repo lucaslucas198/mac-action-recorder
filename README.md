@@ -229,6 +229,10 @@ Manual checklist (not done yet):
 **"Recording needs the Input Monitoring permission" even though it is switched on.**
 Remove Mac Action Recorder from the Input Monitoring list (select it, click `−`), quit the app, reopen it, and add it again when prompted. This is common after rebuilding, because ad-hoc signatures change on every build.
 
+**"I switched it on but the app says I didn't."**
+macOS ties each permission to the app's code signature. Builds signed ad-hoc (the old default) get a new signature every time, so a rebuilt app no longer matches the switch you turned on. The build script now signs with a certificate it creates once in your login keychain (`scripts/ensure_signing_identity.sh`), which keeps the signature requirement the same across rebuilds. The first build after switching to it needs one fresh grant. If macOS asks whether `codesign` may use the key, choose **Always Allow**. The build prints the signature requirement it used; if it says `cdhash`, the local certificate could not be used and permissions will reset on every rebuild. Set `STABLE_SIGNING=0` to go back to ad-hoc signing.
+Also: after switching Input Monitoring on, use **Quit and Reopen**, and make sure you launch the same copy you granted (`/Applications`, not `build/`). The Start Recording button now tests for real instead of trusting the system's quick check, which can be out of date.
+
 **The app is not in the Privacy lists, or the switch is on but it still says Not granted.**
 Open Settings > Permissions & Privacy in the app. Click **Request** for the permission, or use **Show App in Finder** / **Copy App Path** and add the app with the `+` button (press `⌘⇧G` in the file picker and paste the path). If a grant seems stuck, use **Reset This App's Permissions**, request again, switch it on, then **Quit and Reopen**.
 

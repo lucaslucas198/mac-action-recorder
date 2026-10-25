@@ -117,8 +117,14 @@ struct PermissionBanner: View {
                             Permissions.openAccessibilitySettings()
                         }
                     }
+                    Button("Quit and Reopen") { Permissions.relaunch() }
+                        .help("Some permission changes only take effect after the app restarts")
                 }
                 .controlSize(.small)
+                Text("Already switched on? Choose Quit and Reopen. If it still says not granted, the app was rebuilt since: open Settings > Permissions & Privacy and use Reset This App's Permissions.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }

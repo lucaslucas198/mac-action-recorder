@@ -19,6 +19,29 @@ enum Permissions {
         return CGPreflightListenEventAccess()
     }
 
+    /// Tests Input Monitoring the way recording really uses it: by creating a listen-only event
+    /// tap and removing it again. `CGPreflightListenEventAccess` can say "no" for a permission
+    /// that was switched on while the app was running, so this is the more reliable answer.
+    /// Call it on demand, not in a loop: creating a tap without permission can make macOS show
+    /// its permission prompt.
+    static func canObserveInput() -> Bool {
+        let callback: CGEventTapCallBack = { _, _, event, _ in
+            return Unmanaged.passUnretained(event)
+        }
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: CGEventMask(1) << CGEventMask(CGEventType.keyDown.rawValue),
+            callback: callback,
+            userInfo: nil
+        ) else {
+            return false
+        }
+        CFMachPortInvalidate(tap)
+        return true
+    }
+
     /// Shows the system prompt (if macOS still allows one) and registers the app in the list.
     static func requestAccessibility() {
         let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String

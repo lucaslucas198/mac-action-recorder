@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Fixed (not yet compiled or run):
+
+- Permissions appearing "not granted" after being switched on: builds now use a stable local signing certificate (falls back to ad-hoc), the Input Monitoring check tests a real event tap when the system's quick check says no, and the permission banner has Quit and Reopen.
+
 Added (written but **not yet compiled or run**; see README > Verification status):
 
 - Improve this macro: rule-based cleanup plus strictly parsed AI suggestions, with preview and undo.

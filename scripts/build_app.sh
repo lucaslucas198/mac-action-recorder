@@ -6,8 +6,11 @@
 # Options (environment variables):
 #   VERSION            Marketing version written to Info.plist (default 0.1.0)
 #   BUILD_NUMBER       Build number written to Info.plist (default 1)
-#   CODESIGN_IDENTITY  Signing identity. Default "-" = ad-hoc signature (no developer
-#                      account required). See README for notarization notes.
+#   CODESIGN_IDENTITY  Signing identity. If unset, a local self-signed certificate is created
+#                      on first use (see scripts/ensure_signing_identity.sh) so macOS privacy
+#                      permissions survive rebuilds; if that is not possible, or on CI, an
+#                      ad-hoc signature ("-") is used. See README for notarization notes.
+#   STABLE_SIGNING=0   Skip the local certificate and always sign ad-hoc.
 #   NATIVE_ONLY=1      Skip the universal (arm64 + x86_64) build attempt.
 #
 set -euo pipefail
@@ -16,7 +19,7 @@ cd "$(dirname "$0")/.."
 
 VERSION="${VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
-IDENTITY="${CODESIGN_IDENTITY:--}"
+IDENTITY="${CODESIGN_IDENTITY:-}"
 APP_DIR="build/Mac Action Recorder.app"
 ZIP_PATH="build/MacActionRecorder-${VERSION}-macOS.zip"
 
@@ -85,9 +88,24 @@ if [[ -d Resources/AppIcon.iconset ]]; then
     fi
 fi
 
+if [[ -z "$IDENTITY" && -z "${CI:-}" && "${STABLE_SIGNING:-1}" != "0" ]]; then
+    IDENTITY="$(./scripts/ensure_signing_identity.sh || true)"
+fi
+IDENTITY="${IDENTITY:--}"
+
 echo "==> Signing (identity: ${IDENTITY})..."
-codesign --force --deep --sign "$IDENTITY" "$APP_DIR"
+if ! codesign --force --deep --sign "$IDENTITY" "$APP_DIR"; then
+    if [[ "$IDENTITY" == "-" ]]; then
+        echo "error: code signing failed." >&2
+        exit 1
+    fi
+    echo "warning: signing with '${IDENTITY}' failed; falling back to an ad-hoc signature." >&2
+    echo "         (Permissions will then not survive rebuilds.)" >&2
+    codesign --force --deep --sign - "$APP_DIR"
+fi
 codesign --verify --verbose=2 "$APP_DIR" || true
+echo "    Signature requirement macOS will match permissions against:"
+codesign -dr - "$APP_DIR" 2>&1 | sed 's/^/      /' || true
 
 echo "==> Creating zip: $ZIP_PATH"
 rm -f "$ZIP_PATH"

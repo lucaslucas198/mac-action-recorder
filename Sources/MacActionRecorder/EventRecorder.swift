@@ -58,10 +58,6 @@ final class EventRecorder {
 
     func start(options: RecordingOptions, ignoredHotKey: HotKey) throws {
         guard !isRecording else { return }
-        guard CGPreflightListenEventAccess() else {
-            throw RecorderError.permissionDenied
-        }
-
         self.options = options
         self.ignoredHotKey = ignoredHotKey
         throttle = MoveThrottle(minInterval: options.minEventInterval, minDistance: options.minMoveDistance)
@@ -94,7 +90,8 @@ final class EventRecorder {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            throw RecorderError.tapFailed
+            // macOS refuses to create the tap when Input Monitoring is not (yet) effective.
+            throw CGPreflightListenEventAccess() ? RecorderError.tapFailed : RecorderError.permissionDenied
         }
         tap = installed.tap
         source = installed.source

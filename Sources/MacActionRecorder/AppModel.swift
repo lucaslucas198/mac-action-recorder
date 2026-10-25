@@ -175,6 +175,9 @@ final class AppModel: ObservableObject {
     private var countdownTimer: Timer?
     private var elapsedTimer: Timer?
     private var permissionTimer: Timer?
+    /// Set when a real attempt to observe input succeeded even though the system's quick check
+    /// said no. Only updated on demand (see `startRecording`), never polled.
+    private var inputMonitoringWorks = false
     private var recordingStartedAt = 0.0
     private var saveItems: [UUID: DispatchWorkItem] = [:]
     private var settingsSaveItem: DispatchWorkItem?
@@ -326,7 +329,7 @@ final class AppModel: ObservableObject {
 
     func refreshPermissions() {
         let accessibility = Permissions.accessibilityGranted
-        let input = Permissions.inputMonitoringGranted
+        let input = Permissions.inputMonitoringGranted || inputMonitoringWorks
         if accessibility != accessibilityGranted { accessibilityGranted = accessibility }
         if input != inputMonitoringGranted { inputMonitoringGranted = input }
     }
@@ -336,9 +339,15 @@ final class AppModel: ObservableObject {
     func startRecording() {
         guard !status.isBusy else { return }
         refreshPermissions()
-        guard Permissions.inputMonitoringGranted else {
+        if !Permissions.inputMonitoringGranted {
+            // The system's quick check can be out of date right after a permission is switched on.
+            // Trying to observe input for real is the definitive test.
+            inputMonitoringWorks = Permissions.canObserveInput()
+            refreshPermissions()
+        }
+        guard Permissions.inputMonitoringGranted || inputMonitoringWorks else {
             Permissions.requestInputMonitoring()
-            fail("Recording needs the Input Monitoring permission. Enable Mac Action Recorder in System Settings > Privacy & Security > Input Monitoring (Settings > Permissions has a shortcut), then try again. You may need to quit and reopen the app afterwards.")
+            fail("Recording needs the Input Monitoring permission. Enable Mac Action Recorder in System Settings > Privacy & Security > Input Monitoring, then choose Quit and Reopen (Settings > Permissions & Privacy has both shortcuts). If it is already switched on, the app was probably rebuilt since: use Reset This App's Permissions there and grant it again.")
             return
         }
 
