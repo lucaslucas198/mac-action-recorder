@@ -2,7 +2,7 @@
 
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
-> **Status: first version.** It builds, and the 141 unit tests pass, on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
+> **Status: first version.** It builds, and the 155 unit tests pass, on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
 
 ## What it does
 
@@ -186,9 +186,9 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 | Item | Status |
 | --- | --- |
 | Code compiles | **Verified** on macOS 27.2, Xcode, Swift 6.4, Apple Silicon (a release build succeeded). Other macOS/Xcode versions untested. |
-| Unit tests pass | **Verified**: 141 tests, 0 failures, same machine. They cover only the core logic. |
+| Unit tests pass | **Verified**: 155 tests, 0 failures, same machine (includes the 14 macro-check tests). They cover only the core logic. |
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
-| Check macro, AI review, app icon (added after the results above) | **Not yet built or run.** The check rules have unit tests that have not been run yet. The AI review calls Apple's Foundation Models API, which has not been exercised at all. |
+| Check macro, AI review, app icon (added after the results above) | **Compiles and builds** (icon generation ran without warnings; the check rules' unit tests pass). **Not yet run in the app:** the Check sheet UI, and the AI review, which calls Apple's Foundation Models API and has not been exercised at all. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):
