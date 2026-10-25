@@ -21,7 +21,7 @@ enum AIAssistantError: LocalizedError {
 /// macOS 26 or newer, Apple Intelligence turned on).
 ///
 /// - The model runs on this Mac; the app sends nothing over the network.
-/// - It is advisory only. Its answer is shown as text and never changes a macro.
+/// - Its review is shown as text. Its suggested edits are parsed into a small set of safe edits that the user must choose to apply.
 /// - It is given a short text summary of the actions, never the macro file itself.
 /// - Its answers can be wrong; the UI says so.
 enum AIAssistant {
@@ -54,6 +54,28 @@ enum AIAssistant {
     You name macros. Reply with only a short, plain name of at most five words that describes what \
     the macro does. No quotes, no punctuation at the end.
     """
+
+    private static let editInstructions = """
+    You improve keyboard and mouse macros for a Mac automation app that is mostly used with the \
+    Discord desktop app. The user gives you numbered steps such as "#4 Press ⌘K". Suggest changes \
+    using only these two line formats, one per line, and write nothing else:
+    DELETE <step number> | <short reason>
+    PAUSE <step number> <seconds> | <short reason>
+    DELETE removes a step that is clearly pointless, such as an exact repeat of the step before it \
+    or a stray key press. PAUSE makes the app wait before a step, between 0.2 and 3 seconds, when \
+    the step needs the app to catch up, for example typing right after opening a menu or switching \
+    channels. Use at most eight lines. Only use step numbers that appear in the list. Do not delete \
+    steps that send messages or confirm something unless they are exact repeats. If nothing needs \
+    changing, reply with the single word NONE.
+    """
+
+    /// Asks the model for edits. The reply is parsed by `AIEditParser`, which accepts only a small
+    /// set of safe edits; the user still chooses which ones to apply.
+    static func proposeEdits(for recording: Recording) async throws -> [MacroEdit] {
+        let summary = MacroSummary.numberedText(for: recording)
+        let reply = try await respond(instructions: editInstructions, prompt: "Suggest improvements for this macro.\n\n" + summary)
+        return AIEditParser.parse(reply, recording: recording)
+    }
 
     static func review(_ recording: Recording) async throws -> String {
         let summary = MacroSummary.text(for: recording)

@@ -145,6 +145,13 @@ final class AppModel: ObservableObject {
         didSet { playbackSettingChanged() }
     }
 
+    /// The actions from before the last "improve" run, so it can be undone. Cleared by any other edit.
+    struct ImprovementUndo {
+        let id: UUID
+        let before: [MacroAction]
+    }
+    @Published private(set) var improvementUndo: ImprovementUndo?
+
     // Live information
     @Published private(set) var recordingElapsed = 0.0
     @Published private(set) var recordedEventCount = 0
@@ -768,6 +775,7 @@ final class AppModel: ObservableObject {
 
     private func edit(_ change: (inout Recording) -> Void) {
         guard canEdit, let id = selectedID else { return }
+        improvementUndo = nil
         mutate(id, change)
     }
 
@@ -837,6 +845,36 @@ final class AppModel: ObservableObject {
             verifyForeground: settings.verifyForeground,
             currentScreen: Platform.primaryScreenSize()
         )
+    }
+
+    /// Edits proposed by the fixed rules for the selected macro.
+    func improvementPlan() -> [MacroEdit] {
+        guard let recording = current else { return [] }
+        return MacroOptimizer.plan(for: recording)
+    }
+
+    /// Applies the chosen improvements and remembers the previous version so they can be undone.
+    @discardableResult
+    func applyImprovements(_ edits: [MacroEdit]) -> Int {
+        guard canEdit, let id = selectedID, let before = current, !edits.isEmpty else { return 0 }
+        var changed = before
+        let applied = changed.applyEdits(edits)
+        guard applied > 0 else {
+            showNotice("Nothing needed changing.")
+            return 0
+        }
+        let newActions = changed.actions
+        mutate(id) { $0.actions = newActions }
+        improvementUndo = ImprovementUndo(id: id, before: before.actions)
+        showNotice("Applied \(applied) improvement(s). You can undo them from Check macro.")
+        return applied
+    }
+
+    func undoImprovements() {
+        guard canEdit, let undo = improvementUndo, undo.id == selectedID else { return }
+        mutate(undo.id) { $0.actions = undo.before }
+        improvementUndo = nil
+        showNotice("Restored the actions from before the improvements.")
     }
 
     func applyFix(_ fix: MacroFix) {

@@ -137,13 +137,18 @@ Click **Check** above the action list.
 
 The password check is a guess based on the shape of the text, and can be wrong either way.
 
+**Improve this macro** (top of the same sheet) finds changes that make a macro shorter and less likely to fail. You see every proposed change with its reason, tick the ones you want, and click **Apply**. **Undo last improvements** restores the previous actions.
+
+- *Rules* (always available, no AI): remove runs of mouse movements, combine typing that was split into chunks, wait a moment before typing that comes right after a click or shortcut, shorten very long pauses.
+- *AI suggestions* (when available): the on-device model may propose deleting a clearly pointless step or adding a short wait before a step. It can only ask for those two things. Its reply is parsed strictly (unknown words, non-existent step numbers, mouse movements and long deletion lists are discarded), it cannot write text, coordinates or keys into your macro, and nothing is applied until you tick it. Suggestions are marked **AI**.
+
 **AI review** uses Apple's on-device Foundation Models framework. It needs macOS 26 or newer on a Mac with Apple Intelligence turned on, and the app must have been built with an Xcode that includes that framework. It can review a macro in plain language and suggest a name.
 
 - It runs on your Mac. The app has no network code and sends nothing anywhere.
 - It receives a short text summary of the steps (typed text included), not the macro file.
-- It only gives advice. It never edits a macro.
+- The review text and name suggestion change nothing by themselves. Edits only happen through **Improve this macro**, after you choose them.
 - It can be wrong, and the on-device model is small. Treat its answers as suggestions.
-- If the model is unavailable, the section says why and the built-in checks still work.
+- If the model is unavailable, the section says why; the built-in checks and the rule-based improvements still work.
 
 ## Privacy and safety
 

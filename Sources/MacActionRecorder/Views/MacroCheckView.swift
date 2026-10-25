@@ -24,6 +24,8 @@ struct MacroCheckSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    ImproveSection()
+                    Divider()
                     checksSection(findings)
                     Divider()
                     aiSection
@@ -32,7 +34,7 @@ struct MacroCheckSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 560, height: 560)
+        .frame(width: 620, height: 680)
     }
 
     // MARK: Built-in checks
@@ -65,7 +67,7 @@ struct MacroCheckSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("AI review")
                 .font(.subheadline.weight(.semibold))
-            Text("Uses Apple's on-device model, so nothing leaves this Mac. It only gives advice and never changes your macro. It can be wrong, so treat it as a suggestion.")
+            Text("Uses Apple's on-device model, so nothing leaves this Mac. This review is text only and changes nothing. It can be wrong, so treat it as a suggestion. To let it propose edits, use Improve this macro above.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
