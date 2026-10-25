@@ -816,6 +816,19 @@ final class AppModel: ObservableObject {
         edit { recording in _ = recording.insertWait(seconds: clamped, after: id) }
     }
 
+    /// Adds drafted steps to the end of the selected macro, with fresh ids so the same draft can
+    /// be added more than once.
+    func appendDraftedActions(_ drafted: [MacroAction]) {
+        guard !drafted.isEmpty else { return }
+        let copies = drafted.map { (action) -> MacroAction in
+            var copy = action
+            copy.id = UUID()
+            return copy
+        }
+        edit { $0.insertActions(copies, after: nil) }
+        showNotice("Added \(copies.count) step(s) to the end of the macro.")
+    }
+
     func insertPreset(_ presetID: String, input: String, secondInput: String, after id: UUID?) {
         let actions = Presets.actions(for: presetID, input: input, secondInput: secondInput)
         guard !actions.isEmpty else { return }

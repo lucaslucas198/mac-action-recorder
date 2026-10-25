@@ -26,6 +26,8 @@ struct MacroCheckSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     ImproveSection()
                     Divider()
+                    DraftSection()
+                    Divider()
                     checksSection(findings)
                     Divider()
                     aiSection

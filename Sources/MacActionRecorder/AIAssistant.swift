@@ -77,6 +77,26 @@ enum AIAssistant {
         return AIEditParser.parse(reply, recording: recording)
     }
 
+    private static let draftInstructions = """
+    You turn a plain-English request into keyboard steps for a Mac macro app that is mostly used \
+    with the Discord desktop app. Reply only with lines in these formats, one step per line, and \
+    write nothing else:
+    KEY <shortcut>   (examples: KEY cmd+k, KEY return, KEY shift+return, KEY tab, KEY escape)
+    TYPE <text>   (the exact text to type)
+    WAIT <seconds>   (0.1 to 10)
+    Use keyboard shortcuts instead of mouse clicks. In Discord, cmd+k opens the Quick Switcher: \
+    TYPE the channel or person name, then KEY return to open it. Pressing KEY return in a message \
+    box sends the message. Use at most 20 lines. Never type passwords or secrets. If the request \
+    cannot be done with the keyboard, reply with the single word UNSUPPORTED.
+    """
+
+    /// Drafts keyboard steps from a plain-English request. The reply is parsed by `AIMacroDrafter`;
+    /// the user reviews the steps before anything is added to a macro.
+    static func draftSteps(for request: String) async throws -> MacroDraft {
+        let reply = try await respond(instructions: draftInstructions, prompt: "Request: " + request)
+        return AIMacroDrafter.parse(reply)
+    }
+
     static func review(_ recording: Recording) async throws -> String {
         let summary = MacroSummary.text(for: recording)
         return try await respond(instructions: reviewInstructions, prompt: "Review this macro.\n\n" + summary)

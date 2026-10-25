@@ -155,3 +155,107 @@ private struct EditRow: View {
         .toggleStyle(.checkbox)
     }
 }
+
+/// Turns a plain-English request into keyboard steps with the on-device model. The steps are only
+/// added to the macro after the user has looked at them.
+struct DraftSection: View {
+    @EnvironmentObject private var model: AppModel
+
+    @State private var request = ""
+    @State private var draft: MacroDraft?
+    @State private var isWorking = false
+    @State private var errorText: String?
+
+    var body: some View {
+        let availability = AIAssistant.availability
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Draft steps with AI")
+                .font(.subheadline.weight(.semibold))
+            Text("Describe what you want in plain words, for example “open the general channel and say hello”. The on-device AI drafts keyboard steps (no clicks and no screen positions). Read them, then add them to the end of this macro. A Return key press sends a message for real.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if availability.isAvailable {
+                HStack {
+                    TextField("What should the macro do?", text: $request)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { run() }
+                    Button("Draft") { run() }
+                        .disabled(isWorking || trimmedRequest.isEmpty || !model.canEdit)
+                    if isWorking {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+
+                if let draft = draft {
+                    if draft.actions.isEmpty {
+                        Label(
+                            draft.unsupported
+                                ? "The AI says this cannot be done with keyboard steps."
+                                : "The AI did not return any usable steps. Try rewording the request.",
+                            systemImage: "info.circle"
+                        )
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(Array(draft.actions.enumerated()), id: \.offset) { pair in
+                                Text("\(pair.offset + 1). \(ActionDescriber.describe(pair.element))")
+                                    .font(.system(.callout, design: .monospaced))
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.secondary.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                        if draft.skippedLines > 0 {
+                            Text("\(draft.skippedLines) line(s) from the AI were not understood and were left out.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Button("Add to end of macro") {
+                                model.appendDraftedActions(draft.actions)
+                                self.draft = nil
+                                request = ""
+                            }
+                            .disabled(!model.canEdit)
+                            Button("Discard") { self.draft = nil }
+                        }
+                    }
+                }
+                if let errorText = errorText {
+                    Label(errorText, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
+            } else {
+                Label(availability.message, systemImage: "info.circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var trimmedRequest: String {
+        return request.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func run() {
+        let text = trimmedRequest
+        guard !text.isEmpty, !isWorking else { return }
+        isWorking = true
+        errorText = nil
+        draft = nil
+        Task { @MainActor in
+            do {
+                draft = try await AIAssistant.draftSteps(for: text)
+            } catch {
+                errorText = error.localizedDescription
+            }
+            isWorking = false
+        }
+    }
+}

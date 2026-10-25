@@ -53,6 +53,15 @@ struct EditorView: View {
                 Label("Check", systemImage: "checkmark.shield")
             }
             .help("Check this macro for common problems, with an optional on-device AI review")
+            Button {
+                if !ClickPreview.shared.show(for: model.current ?? Recording(name: "")) {
+                    model.showNotice("This macro has no clicks to show.")
+                }
+            } label: {
+                Label("Show Clicks", systemImage: "scope")
+            }
+            .help("Briefly draw numbered markers on screen where this macro will click, to see whether anything has moved")
+            .disabled(model.current == nil)
             Spacer()
 
             Group {

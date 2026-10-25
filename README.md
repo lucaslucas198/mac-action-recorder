@@ -2,7 +2,7 @@
 
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
-> **Status: first version.** It builds, and the 155 unit tests pass, on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
+> **Status: first version.** The version before the "Improve", "Draft" and "Show Clicks" additions built and passed 155 unit tests on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon); the newest additions have not been built yet (see the table below). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
 
 ## What it does
 
@@ -15,7 +15,10 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 - **Settings window**: recording options, playback defaults, storage, permissions and privacy.
 - **Menu bar item** that shows `REC 0:12` while recording and has Stop / Emergency Stop, so you can always stop even when the window is hidden.
 - **Check macro** (the **Check** button above the action list): fixed rules that flag common causes of unreliable or risky macros, each with a one-click fix where one exists. Examples: no foreground check, hundreds of mouse-move actions, long idle pauses, a changed display size, typed text that looks like a password, and a loop that could send messages very quickly.
-- **AI review** (optional, inside Check macro): advice from Apple's on-device language model, which runs on your Mac. See [Check macro and AI review](#check-macro-and-ai-review).
+- **Improve this macro** (inside Check): proposes shortening and fixing steps (remove mouse paths, join split typing, wait before typing that follows a click, shorten long pauses). You tick what to apply, and can undo.
+- **AI features** (optional, on-device, need macOS 26+ with Apple Intelligence): AI suggestions for the Improve list, **Draft steps with AI** (describe what you want in words; get keyboard steps to review), a plain-language review, and name suggestions. See [Check macro and AI review](#check-macro-and-ai-review).
+- **Show Clicks**: draws numbered markers on screen where a macro will click, so a moved window is easy to spot before you play.
+- **Play Macro** submenu in the menu bar for starting a saved macro without opening the window.
 - **Discord presets** (optional): keyboard-only building blocks that use Discord's Quick Switcher (`⌘K`). The app contains **no hardcoded screen coordinates**.
 
 ## Requirements
@@ -152,6 +155,8 @@ The password check is a guess based on the shape of the text, and can be wrong e
 - *Rules* (always available, no AI): remove runs of mouse movements, combine typing that was split into chunks, wait a moment before typing that comes right after a click or shortcut, shorten very long pauses.
 - *AI suggestions* (when available): the on-device model may propose deleting a clearly pointless step or adding a short wait before a step. It can only ask for those two things. Its reply is parsed strictly (unknown words, non-existent step numbers, mouse movements and long deletion lists are discarded), it cannot write text, coordinates or keys into your macro, and nothing is applied until you tick it. Suggestions are marked **AI**.
 
+**Draft steps with AI** turns a sentence such as "open general and say hello" into keyboard steps. The model may only use three line types (press a key or shortcut, type text, wait), so a draft has no mouse clicks and no screen positions. Drafts are shown for review and are added to the end of the macro only when you click **Add to end of macro**. A Return key press in a draft sends a message for real, so read it first.
+
 **AI review** uses Apple's on-device Foundation Models framework. It needs macOS 26 or newer on a Mac with Apple Intelligence turned on, and the app must have been built with an Xcode that includes that framework. It can review a macro in plain language and suggest a name.
 
 - It runs on your Mac. The app has no network code and sends nothing anywhere.
@@ -176,13 +181,15 @@ Sources/MacActionRecorderCore/   Platform-independent logic: recording format, v
                                  recording builder, editing, speed math, playback engine,
                                  settings, storage, macro checks. Foundation only.
 Sources/MacActionRecorder/       macOS app: CGEvent recorder and performer, permissions,
+                                 on-screen click preview, on-device AI wrapper,
                                  SwiftUI views, menu bar item.
 Tests/MacActionRecorderCoreTests/  Unit tests for the core.
 Samples/                         A sample macro with no personal data.
 Resources/                       Info.plist, app icon (AppIcon.svg and the rendered iconset).
 docs/RECORDING_FORMAT.md         File format reference.
 scripts/build_app.sh             Builds, bundles, ad-hoc signs and zips the app.
-init/setup.sh                    One-shot setup for a new Mac.
+Install.command                  Double-click installer: builds, copies to /Applications, opens.
+init/setup.sh                    One-shot setup for a new Mac (tests, then build).
 .github/workflows/ci.yml         Build and test on macOS; release on version tags.
 ```
 
@@ -203,7 +210,8 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 | Code compiles | **Verified** on macOS 27.2, Xcode, Swift 6.4, Apple Silicon (a release build succeeded). Other macOS/Xcode versions untested. |
 | Unit tests pass | **Verified**: 155 tests, 0 failures, same machine (includes the 14 macro-check tests). They cover only the core logic. |
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
-| Check macro, AI review, app icon (added after the results above) | **Compiles and builds** (icon generation ran without warnings; the check rules' unit tests pass). **Not yet run in the app:** the Check sheet UI, and the AI review, which calls Apple's Foundation Models API and has not been exercised at all. |
+| Check macro, AI review, app icon | **Compiles and builds** (icon generation ran without warnings; the 14 check-rule tests pass). **Not yet run in the app:** the Check sheet UI, and the AI review, which calls Apple's Foundation Models API. |
+| Improve this macro, Draft steps with AI, Show Clicks, Play Macro menu, permission rescue buttons, Install.command | **Written but not compiled or run.** Their core logic has unit tests that have not been executed. If the build fails, the first `error:` line says which file. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):
@@ -220,6 +228,9 @@ Manual checklist (not done yet):
 
 **"Recording needs the Input Monitoring permission" even though it is switched on.**
 Remove Mac Action Recorder from the Input Monitoring list (select it, click `−`), quit the app, reopen it, and add it again when prompted. This is common after rebuilding, because ad-hoc signatures change on every build.
+
+**The app is not in the Privacy lists, or the switch is on but it still says Not granted.**
+Open Settings > Permissions & Privacy in the app. Click **Request** for the permission, or use **Show App in Finder** / **Copy App Path** and add the app with the `+` button (press `⌘⇧G` in the file picker and paste the path). If a grant seems stuck, use **Reset This App's Permissions**, request again, switch it on, then **Quit and Reopen**.
 
 **Playback does nothing or only moves the pointer.**
 Check **Accessibility**. Same fix as above. Also check that the target app is not using Secure Input (a password field focused) and that the macro's coordinates are still valid.

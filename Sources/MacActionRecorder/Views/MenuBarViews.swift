@@ -49,6 +49,15 @@ struct MenuBarContent: View {
         Group {
             Button("Play") { model.play() }
                 .disabled(model.status.isBusy || model.current == nil)
+            Menu("Play Macro") {
+                ForEach(model.recordings.prefix(15)) { recording in
+                    Button(recording.name) {
+                        model.selectedID = recording.id
+                        model.play()
+                    }
+                }
+            }
+            .disabled(model.status.isBusy || model.recordings.isEmpty)
             Button(model.status == .paused ? "Resume" : "Pause") { model.togglePause() }
                 .disabled(!model.status.isPlaybackPhase)
             Button("Emergency Stop") { model.emergencyStop() }

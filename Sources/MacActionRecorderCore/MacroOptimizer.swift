@@ -297,7 +297,7 @@ public enum AIEditParser {
     }
 
     /// Removes list bullets, numbering and markdown emphasis from the start of a line.
-    private static func clean(_ line: String) -> String {
+    static func clean(_ line: String) -> String {
         var text = line.replacingOccurrences(of: "*", with: "").replacingOccurrences(of: "`", with: "")
         text = text.trimmingCharacters(in: .whitespaces)
         while let first = text.first, first == "-" || first == "•" || first == ">" {

@@ -245,4 +245,70 @@ final class MacroOptimizerTests: XCTestCase {
         XCTAssertTrue(text.contains("lines omitted"))
         XCTAssertFalse(text.contains("#100 "))
     }
+
+    // MARK: Drafting steps from a description
+
+    func testDraftsQuickSwitcherSteps() {
+        let draft = AIMacroDrafter.parse("""
+        KEY cmd+k
+        TYPE general
+        KEY return
+        TYPE Hello everyone!
+        KEY return
+        """)
+        XCTAssertEqual(draft.actions.map { $0.kind }, [.key, .text, .key, .text, .key])
+        XCTAssertEqual(draft.actions[0].keyCode, KeyCodes.ansiK)
+        XCTAssertEqual(draft.actions[0].modifiers, [.command])
+        XCTAssertEqual(draft.actions[3].text, "Hello everyone!")
+        XCTAssertEqual(draft.actions[0].delay, 0)
+        XCTAssertEqual(draft.actions[1].delay, AIMacroDrafter.afterShortcutDelay)
+        XCTAssertEqual(draft.actions[2].delay, AIMacroDrafter.beforeReturnDelay)
+        XCTAssertEqual(draft.skippedLines, 0)
+        XCTAssertFalse(draft.unsupported)
+    }
+
+    func testDraftedActionsPassValidation() {
+        let draft = AIMacroDrafter.parse("KEY cmd+k\nTYPE hi\nWAIT 99\nKEY shift+return")
+        let r = Recording(name: "d", actions: draft.actions)
+        XCTAssertTrue(RecordingValidator.errors(in: RecordingValidator.validate(r)).isEmpty)
+        XCTAssertEqual(draft.actions[2].duration, AIMacroDrafter.maxWait)
+    }
+
+    func testDraftIgnoresProseFencesAndBulletsButCountsBrokenSteps() {
+        let draft = AIMacroDrafter.parse("""
+        Sure! Here you go:
+        ```
+        - KEY ctrl+opt+tab
+        - **TYPE** "quoted text"
+        KEY florp
+        WAIT soon
+        ```
+        """)
+        XCTAssertEqual(draft.actions.count, 2)
+        XCTAssertEqual(draft.actions[0].modifiers, [.control, .option])
+        XCTAssertEqual(draft.actions[1].text, "quoted text")
+        XCTAssertEqual(draft.skippedLines, 2)
+    }
+
+    func testDraftUnsupportedAndEmpty() {
+        XCTAssertTrue(AIMacroDrafter.parse("UNSUPPORTED").unsupported)
+        XCTAssertTrue(AIMacroDrafter.parse("").actions.isEmpty)
+        XCTAssertFalse(AIMacroDrafter.parse("").unsupported)
+    }
+
+    func testDraftRejectsUnknownModifiersAndOversizedText() {
+        XCTAssertTrue(AIMacroDrafter.parse("KEY hyper+k").actions.isEmpty)
+        let long = String(repeating: "a", count: AIMacroDrafter.maxTextLength + 1)
+        XCTAssertTrue(AIMacroDrafter.parse("TYPE \(long)").actions.isEmpty)
+    }
+
+    func testDraftIsCapped() {
+        let reply = (0..<100).map { _ in "KEY tab" }.joined(separator: "\n")
+        XCTAssertEqual(AIMacroDrafter.parse(reply).actions.count, AIMacroDrafter.maxActions)
+    }
+
+    func testDraftKeepsTextExactlyIncludingInnerSpacesAndCase() {
+        let draft = AIMacroDrafter.parse("type   Hello   World ")
+        XCTAssertEqual(draft.actions.first?.text, "Hello   World")
+    }
 }
