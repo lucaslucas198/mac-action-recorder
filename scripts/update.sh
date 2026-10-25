@@ -38,14 +38,14 @@ echo "==> Downloading the newest version"
 curl -fsSL --max-time 300 -o "$WORK/source.zip" "$URL"
 ditto -x -k "$WORK/source.zip" "$WORK/source"
 SRC="$(find "$WORK/source" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-if [[ -z "$SRC" || ! -f "$SRC/Package.swift" || ! -x "$SRC/scripts/build_app.sh" ]]; then
+if [[ -z "$SRC" || ! -f "$SRC/Package.swift" || ! -f "$SRC/scripts/build_app.sh" ]]; then
     echo "error: the download does not look like the Mac Action Recorder source." >&2
     exit 1
 fi
 
 echo "==> Building (this takes a minute or two)"
 cd "$SRC"
-NATIVE_ONLY=1 ./scripts/build_app.sh
+NATIVE_ONLY=1 bash ./scripts/build_app.sh
 
 APP="$SRC/build/Mac Action Recorder.app"
 if [[ ! -d "$APP" ]]; then

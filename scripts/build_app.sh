@@ -99,7 +99,7 @@ if [[ -d Resources/AppIcon.iconset ]]; then
 fi
 
 if [[ -z "$IDENTITY" && -z "${CI:-}" && "${STABLE_SIGNING:-1}" != "0" ]]; then
-    IDENTITY="$(./scripts/ensure_signing_identity.sh || true)"
+    IDENTITY="$(bash ./scripts/ensure_signing_identity.sh || true)"
 fi
 IDENTITY="${IDENTITY:--}"
 
