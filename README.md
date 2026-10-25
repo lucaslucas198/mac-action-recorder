@@ -20,7 +20,7 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 ## Requirements
 
 - macOS 13 (Ventura) or newer, Apple Silicon or Intel.
-- Xcode **or** the Xcode Command Line Tools with Swift 5.9 or newer (`xcode-select --install`).
+- **Full Xcode** (free, Mac App Store) is recommended. On macOS 27 the standalone Command Line Tools are not enough: the build fails with `plugin for module 'SwiftUIMacros' not found`, and the unit tests cannot run because XCTest is missing. After installing Xcode run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
 
 ## Install on another Mac
 
@@ -196,6 +196,9 @@ This applies to downloaded release zips because they are not notarized. Use righ
 
 **The app window disappeared.**
 Closing the window leaves the app running in the menu bar. Choose **Show Window** from the menu bar item. The window also hides itself during recording and playback if you left those options on.
+
+**`plugin for module 'SwiftUIMacros' not found` (many errors in the `Views` files).**
+Only the Command Line Tools are installed. Install Xcode from the Mac App Store, open it once, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`, and build again.
 
 **Build errors.**
 Check `swift --version` (5.9 or newer) and macOS 13 or newer. Open an issue and paste the first error. Because the code has never been compiled, a few errors are likely.

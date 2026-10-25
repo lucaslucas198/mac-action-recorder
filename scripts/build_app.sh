@@ -45,7 +45,23 @@ fi
 
 if [[ -z "$BIN_PATH" ]]; then
     echo "==> Building for the native architecture..."
-    swift build -c release
+    BUILD_LOG="$(mktemp)"
+    if ! swift build -c release 2>&1 | tee "$BUILD_LOG"; then
+        if grep -q "SwiftUIMacros" "$BUILD_LOG"; then
+            cat >&2 <<'HINT'
+
+error: the build failed because the SwiftUI macro plugin ("SwiftUIMacros") is missing.
+       This happens when only the Command Line Tools are installed. SwiftUI apps
+       need the full Xcode app on current macOS versions. To fix:
+         1. Install Xcode from the Mac App Store and open it once to finish setup.
+         2. sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+         3. Re-run ./scripts/build_app.sh
+HINT
+        fi
+        rm -f "$BUILD_LOG"
+        exit 1
+    fi
+    rm -f "$BUILD_LOG"
     BIN_PATH="$(swift build -c release --show-bin-path)"
 fi
 

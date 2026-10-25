@@ -32,6 +32,11 @@ if ! command -v swift >/dev/null 2>&1; then
 fi
 swift --version
 
+if [[ "$(xcode-select -p 2>/dev/null)" == *CommandLineTools* ]] && [[ ! -d /Applications/Xcode.app ]]; then
+    echo "note: only the Command Line Tools are installed. Building this SwiftUI app and running" >&2
+    echo "      its tests usually needs the full Xcode app (free, Mac App Store)." >&2
+fi
+
 echo "==> Running unit tests"
 # The tests need XCTest, which ships with full Xcode but not with the standalone
 # Command Line Tools. If they cannot run, say so and continue with the build.
