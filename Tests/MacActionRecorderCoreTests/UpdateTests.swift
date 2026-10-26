@@ -43,11 +43,58 @@ final class UpdateTests: XCTestCase {
     }
 
     func testUpdateAddressesAreFixedHttpsGitHubURLs() {
-        XCTAssertEqual(UpdateConfig.versionFileURL.scheme, "https")
-        XCTAssertEqual(UpdateConfig.versionFileURL.host, "raw.githubusercontent.com")
-        XCTAssertEqual(UpdateConfig.sourceZipURL.scheme, "https")
-        XCTAssertEqual(UpdateConfig.sourceZipURL.host, "github.com")
-        XCTAssertTrue(UpdateConfig.sourceZipURL.path.hasSuffix(".zip"))
+        XCTAssertEqual(UpdateConfig.latestReleaseAPIURL.scheme, "https")
+        XCTAssertEqual(UpdateConfig.latestReleaseAPIURL.host, "api.github.com")
+        XCTAssertTrue(UpdateConfig.releaseDownloadPrefix.hasPrefix("https://github.com/"))
+        XCTAssertTrue(UpdateConfig.releaseAssetName.hasSuffix(".zip"))
+    }
+
+    private func releaseJSON(
+        tag: String = "v0.3.0",
+        assetName: String = "MacActionRecorder-macOS.zip",
+        assetURL: String? = nil,
+        extra: String = ""
+    ) -> Data {
+        let url = assetURL ?? (UpdateConfig.releaseDownloadPrefix + "\(tag)/\(assetName)")
+        let json = """
+        {"tag_name": "\(tag)"\(extra), "assets": [
+          {"name": "README.txt", "browser_download_url": "\(UpdateConfig.releaseDownloadPrefix)\(tag)/README.txt"},
+          {"name": "\(assetName)", "browser_download_url": "\(url)"}
+        ]}
+        """
+        return Data(json.utf8)
+    }
+
+    func testReleaseInfoReadsVersionAndAsset() throws {
+        let info = try XCTUnwrap(ReleaseInfo.parse(releaseJSON()))
+        XCTAssertEqual(info.version, AppVersion("0.3.0"))
+        XCTAssertEqual(info.assetURL.lastPathComponent, "MacActionRecorder-macOS.zip")
+        XCTAssertTrue(info.assetURL.absoluteString.hasPrefix(UpdateConfig.releaseDownloadPrefix))
+    }
+
+    func testReleaseInfoRejectsBadAnswers() {
+        XCTAssertNil(ReleaseInfo.parse(Data("not json".utf8)))
+        XCTAssertNil(ReleaseInfo.parse(Data("{\"message\": \"Not Found\"}".utf8)))
+        XCTAssertNil(ReleaseInfo.parse(Data("[]".utf8)))
+        // right version, but the app file is missing
+        XCTAssertNil(ReleaseInfo.parse(releaseJSON(assetName: "other.zip")))
+        // right name, but hosted somewhere else
+        XCTAssertNil(ReleaseInfo.parse(releaseJSON(assetURL: "https://example.com/MacActionRecorder-macOS.zip")))
+        XCTAssertNil(ReleaseInfo.parse(releaseJSON(assetURL: "http://github.com/x/MacActionRecorder-macOS.zip")))
+        // unparseable tag, draft, prerelease
+        XCTAssertNil(ReleaseInfo.parse(releaseJSON(tag: "nightly")))
+        XCTAssertNil(ReleaseInfo.parse(releaseJSON(extra: ", \"draft\": true")))
+        XCTAssertNil(ReleaseInfo.parse(releaseJSON(extra: ", \"prerelease\": true")))
+    }
+
+    func testWelcomeFlagDefaultsToFalseAndPersists() throws {
+        XCTAssertFalse(AppSettings().hasCompletedWelcome)
+        let old = try JSONDecoder().decode(AppSettings.self, from: Data("{\"defaultSpeed\": 2}".utf8))
+        XCTAssertFalse(old.hasCompletedWelcome)
+        var settings = AppSettings()
+        settings.hasCompletedWelcome = true
+        let data = try JSONEncoder().encode(settings)
+        XCTAssertTrue(try JSONDecoder().decode(AppSettings.self, from: data).hasCompletedWelcome)
     }
 
     func testRepositoryVersionFileParses() throws {

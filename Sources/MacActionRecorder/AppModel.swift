@@ -126,6 +126,8 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var unsavedIDs: Set<UUID> = []
     @Published private(set) var loadIssues: [String] = []
+    /// Whether the Welcome screen is showing. It opens on first launch until Enter is clicked.
+    @Published var showingWelcome = false
 
     // Status
     @Published private(set) var status: AppStatus = .idle
@@ -241,6 +243,8 @@ final class AppModel: ObservableObject {
         if settings.backupEnabled && !recordings.isEmpty {
             _ = try? store?.createBackup(into: backupDirectory, keep: settings.backupKeepCount)
         }
+
+        showingWelcome = !settings.hasCompletedWelcome
 
         let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshPermissions()

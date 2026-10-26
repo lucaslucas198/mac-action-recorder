@@ -74,6 +74,12 @@ struct MenuBarContent: View {
                 openWindow(id: "settings")
                 NSApp.activate(ignoringOtherApps: true)
             }
+            Button("Welcome & Setup…") {
+                openWindow(id: "main")
+                NSApp.unhide(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                model.showingWelcome = true
+            }
             Button("Check for Updates…") { UpdateManager.shared.check(userInitiated: true) }
             Divider()
             Button("Quit Mac Action Recorder") { NSApp.terminate(nil) }

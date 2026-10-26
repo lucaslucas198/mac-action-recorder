@@ -9,10 +9,10 @@ struct UpdateBanner: View {
         switch updates.state {
         case .available(let version):
             row(icon: "arrow.down.circle", text: "Version \(version) is available.") {
-                Button("Download and Build") { updates.startBuild() }
+                Button("Download") { updates.startDownload() }
             }
-        case .building(let version):
-            row(icon: "hammer", text: "Building version \(version) in the background. You can keep using the app.") {
+        case .downloading(let version):
+            row(icon: "arrow.down.circle", text: "Downloading version \(version) in the background. You can keep using the app.") {
                 ProgressView().controlSize(.small)
             }
         case .ready(let version):
@@ -58,7 +58,7 @@ struct UpdatesSettingsTab: View {
             Section("Updates") {
                 LabeledContent("Installed version", value: updates.installedVersionText ?? "development build")
                 Toggle("Check for updates automatically", isOn: $model.settings.checkForUpdates)
-                Toggle("Download and build new versions in the background", isOn: $model.settings.autoBuildUpdates)
+                Toggle("Download new versions in the background", isOn: $model.settings.autoBuildUpdates)
                     .disabled(!model.settings.checkForUpdates)
                 HStack {
                     Button("Check Now") { updates.check(userInitiated: true) }
@@ -71,9 +71,9 @@ struct UpdatesSettingsTab: View {
             }
 
             Section("How updates work") {
-                bullet("The app reads one small text file from its GitHub repository (\(UpdateConfig.repository)) to see the newest version number. That request is the only network use. It sends no recordings, settings or personal data; GitHub sees your IP address like any web request.")
-                bullet("A newer version is downloaded as source code from the same repository and built on this Mac, so it needs Xcode. Nothing is installed until you click Restart to Update.")
-                bullet("The new build replaces the installed app. Because it is signed with the same local certificate, macOS permissions normally carry over. If they do not, use Reset This App's Permissions in the Permissions & Privacy tab.")
+                bullet("The app asks GitHub (\(UpdateConfig.repository)) for the newest release. That request is the only network use. It sends no recordings, settings or personal data; GitHub sees your IP address like any web request.")
+                bullet("A newer version is downloaded as the finished app from that release. Nothing is built on your Mac and Xcode is not needed. Nothing is installed until you click Restart to Update.")
+                bullet("The new app is signed on this Mac with the same local certificate, so macOS permissions normally carry over. If they do not, use Reset This App's Permissions in the Permissions & Privacy tab.")
                 bullet("Turn the checks off here to make the app use no network at all.")
             }
         }

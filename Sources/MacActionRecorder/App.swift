@@ -36,8 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         // Look for updates shortly after launch, then every few hours (if enabled in Settings).
+        // Not before the Welcome screen has been closed: nothing is contacted until you have seen it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
-            UpdateManager.shared.startSchedule()
+            if AppModel.shared.settings.hasCompletedWelcome {
+                UpdateManager.shared.startSchedule()
+            }
         }
     }
 
@@ -63,6 +66,14 @@ struct AppCommands: Commands {
                 NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(",", modifiers: .command)
+        }
+
+        CommandGroup(replacing: .help) {
+            Button("Welcome & Setup…") {
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+                model.showingWelcome = true
+            }
         }
 
         CommandMenu("Macro") {

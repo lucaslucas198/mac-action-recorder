@@ -54,19 +54,58 @@ public struct AppVersion: Comparable, Equatable, CustomStringConvertible {
     }
 }
 
-/// Where updates come from. The app only ever contacts these two addresses, and only to read.
+/// Where updates come from. The app only ever contacts these fixed GitHub addresses, and only to read.
 public enum UpdateConfig {
     public static let repository = "lucaslucas198/mac-action-recorder"
-    public static let branch = "main"
 
-    /// A one-line text file in the repository that holds the newest version number.
-    public static var versionFileURL: URL {
-        return URL(string: "https://raw.githubusercontent.com/\(repository)/\(branch)/VERSION")!
+    /// GitHub's description of the newest published release (version number and file list).
+    public static var latestReleaseAPIURL: URL {
+        return URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
     }
 
-    /// The source of the newest version, as a zip.
-    public static var sourceZipURL: URL {
-        return URL(string: "https://github.com/\(repository)/archive/refs/heads/\(branch).zip")!
+    /// The name of the release file that holds the finished app (a zip of "Mac Action Recorder.app").
+    public static let releaseAssetName = "MacActionRecorder-macOS.zip"
+
+    /// The only address prefix a downloadable release file may have.
+    public static var releaseDownloadPrefix: String {
+        return "https://github.com/\(repository)/releases/download/"
+    }
+}
+
+/// The parts of GitHub's "latest release" answer that the updater uses.
+public struct ReleaseInfo: Equatable {
+    public let version: AppVersion
+    public let assetURL: URL
+
+    public init(version: AppVersion, assetURL: URL) {
+        self.version = version
+        self.assetURL = assetURL
+    }
+
+    /// Reads GitHub's JSON. Returns nil unless it names a parseable version AND a file called
+    /// `UpdateConfig.releaseAssetName` hosted under this repository's release downloads. Anything
+    /// else (an error message, a draft, a file from somewhere else) is ignored.
+    public static func parse(_ data: Data) -> ReleaseInfo? {
+        guard data.count < 2_000_000,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tag = object["tag_name"] as? String,
+              let version = AppVersion(tag) else {
+            return nil
+        }
+        if (object["draft"] as? Bool) == true || (object["prerelease"] as? Bool) == true {
+            return nil
+        }
+        let assets = object["assets"] as? [[String: Any]] ?? []
+        for asset in assets {
+            guard (asset["name"] as? String) == UpdateConfig.releaseAssetName,
+                  let address = asset["browser_download_url"] as? String,
+                  address.hasPrefix(UpdateConfig.releaseDownloadPrefix),
+                  let url = URL(string: address) else {
+                continue
+            }
+            return ReleaseInfo(version: version, assetURL: url)
+        }
+        return nil
     }
 }
 

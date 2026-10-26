@@ -84,10 +84,11 @@ echo "==> Assembling app bundle: $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$EXECUTABLE" "$APP_DIR/Contents/MacOS/MacActionRecorder"
-if [[ -f scripts/update.sh ]]; then
-    cp scripts/update.sh "$APP_DIR/Contents/Resources/update.sh"
-    chmod +x "$APP_DIR/Contents/Resources/update.sh"
-fi
+# Helper scripts the app runs itself (setup signing, updates). They must sit together.
+for helper in update.sh prepare_app.sh ensure_signing_identity.sh; do
+    cp "scripts/$helper" "$APP_DIR/Contents/Resources/$helper"
+    chmod +x "$APP_DIR/Contents/Resources/$helper"
+done
 sed -e "s/__VERSION__/${VERSION}/g" -e "s/__BUILD__/${BUILD_NUMBER}/g" \
     Resources/Info.plist > "$APP_DIR/Contents/Info.plist"
 

@@ -40,9 +40,13 @@ public struct AppSettings: Codable, Equatable {
     // Updates
     /// Look for a newer version on GitHub (a single read-only request, at most every few hours).
     public var checkForUpdates = true
-    /// Download and build a newer version in the background. It is only installed when you
-    /// choose Restart to Update.
+    /// Download a newer version in the background (the key keeps its old name so saved settings
+    /// still load). It is only installed when you choose Restart to Update.
     public var autoBuildUpdates = true
+
+    // First run
+    /// True once the Welcome screen has been closed with its Enter button.
+    public var hasCompletedWelcome = false
 
     public init() {}
 
@@ -72,6 +76,7 @@ public struct AppSettings: Codable, Equatable {
         acknowledgedRecordingWarning = c.value(.acknowledgedRecordingWarning, acknowledgedRecordingWarning)
         checkForUpdates = c.value(.checkForUpdates, checkForUpdates)
         autoBuildUpdates = c.value(.autoBuildUpdates, autoBuildUpdates)
+        hasCompletedWelcome = c.value(.hasCompletedWelcome, hasCompletedWelcome)
     }
 
     /// Returns a copy with every value forced into a safe range.

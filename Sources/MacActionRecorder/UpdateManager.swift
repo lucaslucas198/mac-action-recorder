@@ -3,17 +3,17 @@ import Combine
 import Foundation
 import MacActionRecorderCore
 
-/// Keeps the app up to date from its GitHub repository.
+/// Keeps the app up to date from its GitHub Releases.
 ///
 /// How it works:
-/// 1. A single read-only request fetches the repository's `VERSION` file (at most every few hours).
-/// 2. If that version is newer, the bundled `update.sh` downloads the newest source, builds it with
-///    Xcode, and leaves the finished app in a staging folder. The installed app is not touched.
+/// 1. One read-only request asks GitHub for the newest release (at most every few hours).
+/// 2. If that version is newer, the bundled `update.sh` downloads the finished app from the release,
+///    checks it, signs it for this Mac, and leaves it in a staging folder. The installed app is not touched.
 /// 3. When you choose "Restart to Update", a short helper replaces the installed app with the staged
 ///    one and reopens it.
 ///
-/// Nothing is installed without that last click. The only addresses contacted are the two fixed
-/// GitHub URLs in `UpdateConfig`. Building needs Xcode, as building from source always does.
+/// Nothing is installed without that last click. The only addresses contacted are the fixed GitHub
+/// addresses in `UpdateConfig`. No Xcode or building is involved.
 final class UpdateManager: ObservableObject {
     static let shared = UpdateManager()
 
@@ -22,12 +22,15 @@ final class UpdateManager: ObservableObject {
         case checking
         case upToDate
         case available(String)
-        case building(String)
+        case downloading(String)
         case ready(String)
         case failed(String)
     }
 
     @Published private(set) var state: State = .idle
+
+    /// The release found by the last check; its file is what gets downloaded.
+    private var pendingRelease: ReleaseInfo?
 
     private let lastCheckKey = "lastUpdateCheckTime"
     private let checkInterval: TimeInterval = 6 * 3600
@@ -72,7 +75,7 @@ final class UpdateManager: ObservableObject {
         case .checking: return "Checking for updates…"
         case .upToDate: return "You have the latest version."
         case .available(let version): return "Version \(version) is available."
-        case .building(let version): return "Building version \(version)…"
+        case .downloading(let version): return "Downloading version \(version)…"
         case .ready(let version): return "Version \(version) is ready to install."
         case .failed(let message): return message
         }
@@ -102,7 +105,7 @@ final class UpdateManager: ObservableObject {
     /// Looks for a newer version now. When `userInitiated`, problems are shown instead of ignored.
     func check(userInitiated: Bool) {
         switch state {
-        case .checking, .building:
+        case .checking, .downloading:
             return
         default:
             break
@@ -114,11 +117,12 @@ final class UpdateManager: ObservableObject {
         state = .checking
 
         var request = URLRequest(
-            url: UpdateConfig.versionFileURL,
+            url: UpdateConfig.latestReleaseAPIURL,
             cachePolicy: .reloadIgnoringLocalCacheData,
             timeoutInterval: 15
         )
         request.setValue("MacActionRecorder-UpdateCheck", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 self?.finishCheck(data: data, response: response, error: error, userInitiated: userInitiated)
@@ -135,34 +139,40 @@ final class UpdateManager: ObservableObject {
             return
         }
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            fail("GitHub answered with status \(http.statusCode) when looking for updates.")
+            // 404 means GitHub has no published release yet, which is not an error worth showing.
+            if http.statusCode == 404 {
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastCheckKey)
+                state = userInitiated ? .upToDate : .idle
+            } else {
+                fail("GitHub answered with status \(http.statusCode) when looking for updates.")
+            }
             return
         }
-        guard let data = data, data.count < 1024, let text = String(data: data, encoding: .utf8),
-              let remote = AppVersion(text) else {
+        guard let data = data, let release = ReleaseInfo.parse(data) else {
             fail("The update information on GitHub could not be read.")
             return
         }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastCheckKey)
 
         guard let installedText = installedVersionText,
-              UpdateCheck.isNewer(remote: text, installed: installedText) else {
+              UpdateCheck.isNewer(remote: release.version.description, installed: installedText) else {
             state = .upToDate
             return
         }
-        state = .available(remote.description)
+        pendingRelease = release
+        state = .available(release.version.description)
 
         let settings = AppModel.shared.settings
         if settings.autoBuildUpdates && !AppModel.shared.status.isBusy {
-            startBuild()
+            startDownload()
         }
     }
 
-    // MARK: Building
+    // MARK: Downloading
 
-    /// Downloads and builds the available version in the background.
-    func startBuild() {
-        guard case .available(let version) = state, let script = scriptURL else { return }
+    /// Downloads and prepares the available version in the background.
+    func startDownload() {
+        guard case .available(let version) = state, let release = pendingRelease, let script = scriptURL else { return }
         do {
             try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
             FileManager.default.createFile(atPath: logURL.path, contents: nil)
@@ -170,7 +180,7 @@ final class UpdateManager: ObservableObject {
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [script.path, stagingDirectory.path, UpdateConfig.sourceZipURL.absoluteString]
+            process.arguments = [script.path, stagingDirectory.path, release.assetURL.absoluteString]
             process.qualityOfService = .utility
             process.standardOutput = log
             process.standardError = log
@@ -178,28 +188,28 @@ final class UpdateManager: ObservableObject {
                 try? log.close()
                 let status = finished.terminationStatus
                 DispatchQueue.main.async {
-                    self?.finishBuild(version: version, exitStatus: status)
+                    self?.finishDownload(version: version, exitStatus: status)
                 }
             }
-            state = .building(version)
+            state = .downloading(version)
             try process.run()
         } catch {
             state = .failed("Could not start the update: \(error.localizedDescription)")
         }
     }
 
-    private func finishBuild(version: String, exitStatus: Int32) {
+    private func finishDownload(version: String, exitStatus: Int32) {
         if exitStatus == 0, FileManager.default.fileExists(atPath: stagedAppURL.path) {
             state = .ready(version)
         } else {
-            state = .failed("The update could not be built. " + logTail())
+            state = .failed("The update could not be downloaded. " + logTail())
         }
     }
 
     private func logTail() -> String {
         guard let text = try? String(contentsOf: logURL, encoding: .utf8) else { return "" }
         let lines = text.split(separator: "\n").map(String.init)
-        let errors = lines.filter { $0.contains("error:") }
+        let errors = lines.filter { $0.contains("error:") || $0.contains("curl:") }
         let shown = errors.isEmpty ? Array(lines.suffix(3)) : Array(errors.prefix(3))
         return shown.joined(separator: " ")
     }
@@ -229,32 +239,10 @@ final class UpdateManager: ObservableObject {
             AppModel.shared.showNotice("Finish or stop the current recording or playback before updating.", isError: true)
             return
         }
-        let destination = Bundle.main.bundleURL.path
-        let staged = stagedAppURL.path
-
-        // Copy next to the old app first, swap only when the copy succeeded, and reopen
-        // whatever is installed afterwards. Runs after this app has quit.
-        let script = """
-        sleep 1.5
-        if /usr/bin/ditto "$1" "$2.new"; then
-            rm -rf "$2"
-            mv "$2.new" "$2"
-            /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
-            rm -rf "$1"
-        else
-            rm -rf "$2.new"
-        fi
-        /usr/bin/open "$2"
-        """
-        let helper = Process()
-        helper.executableURL = URL(fileURLWithPath: "/bin/sh")
-        helper.arguments = ["-c", script, "sh", staged, destination]
         do {
-            try helper.run()
+            try AppInstaller.swapAndRelaunch(staged: stagedAppURL, destination: Bundle.main.bundleURL)
         } catch {
-            state = .failed("Could not start the installer: \(error.localizedDescription)")
-            return
+            state = .failed("Could not install the update: \(error.localizedDescription)")
         }
-        NSApp.terminate(nil)
     }
 }

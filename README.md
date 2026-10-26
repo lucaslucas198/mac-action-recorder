@@ -1,5 +1,7 @@
 # Mac Action Recorder
 
+**Install:** download `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest), drag the app onto Applications, and follow the Welcome screen. Detailed steps: [Install on a Mac](#install-on-a-mac-no-xcode-needed).
+
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
 > **Status: first version.** The version before the "Improve", "Draft" and "Show Clicks" additions built and passed 155 unit tests on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon); the newest additions have not been built yet (see the table below). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
@@ -18,61 +20,72 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 - **Improve this macro** (inside Check): proposes shortening and fixing steps (remove mouse paths, join split typing, wait before typing that follows a click, shorten long pauses). You tick what to apply, and can undo.
 - **AI features** (optional, on-device, need macOS 26+ with Apple Intelligence): AI suggestions for the Improve list, **Draft steps with AI** (describe what you want in words; get keyboard steps to review), a plain-language review, and name suggestions. See [Check macro and AI review](#check-macro-and-ai-review).
 - **Show Clicks**: draws numbered markers on screen where a macro will click, so a moved window is easy to spot before you play.
-- **Auto-update** from this GitHub repository (see [Updates](#updates)): the app notices a newer version, builds it in the background, and installs it when you click Restart to Update.
+- **Welcome screen** on first launch: sets the app up on your Mac, shows the live status of the two permissions, and closes with an **Enter** button (see [Install](#install-on-a-mac-no-xcode-needed)).
+- **Auto-update** from this repository's GitHub Releases (see [Updates](#updates)): the app notices a newer version, downloads the finished app in the background, and installs it when you click Restart to Update.
 - **Play Macro** submenu in the menu bar for starting a saved macro without opening the window.
 - **Discord presets** (optional): keyboard-only building blocks that use Discord's Quick Switcher (`⌘K`). The app contains **no hardcoded screen coordinates**.
 
-## Requirements
+## Install on a Mac (no Xcode needed)
 
-- macOS 13 (Ventura) or newer, Apple Silicon or Intel.
-- **Full Xcode** (free, Mac App Store) is recommended. On macOS 27 the standalone Command Line Tools are not enough: the build fails with `plugin for module 'SwiftUIMacros' not found`, and the unit tests cannot run because XCTest is missing. After installing Xcode run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
+You download one file, drag one app, and the app's Welcome screen does the rest.
 
-## Install on another Mac
+**Requirements:** macOS 13 (Ventura) or newer, Apple Silicon or Intel. Nothing else has to be installed. The optional on-device AI helper needs macOS 26 or newer with Apple Intelligence turned on; the app tells you if it is not available.
 
-### Easiest: download the zip and double-click
+### Step by step
 
-1. On the repository page click **Code > Download ZIP**, then double-click the downloaded zip to unpack it.
-2. Install **Xcode** from the Mac App Store if you do not have it (free, several GB), and open it once.
-3. In the unpacked folder, **right-click `Install.command` > Open > Open** (a plain double-click is blocked the first time because the file came from the internet).
-4. Wait for it to finish. It builds the app, copies it to `/Applications`, and opens it. It may ask for your Mac password to accept Xcode's license.
-5. In the app, open **Settings > Permissions & Privacy** and switch on Input Monitoring and Accessibility.
+1. **Download** `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest) (under **Assets**).
+2. **Open the downloaded file** (double-click it in Downloads). A window opens with *Mac Action Recorder* and an *Applications* folder.
+3. **Drag *Mac Action Recorder* onto *Applications*.** Then eject the disk image (the eject button next to it in the Finder sidebar).
+4. **Open it for the first time.** In Finder, open *Applications* and double-click *Mac Action Recorder*. macOS will very likely refuse with a message that it cannot verify the app. That is expected, because the app is not notarized (see [why](#code-signing-and-notarization)). Click **Done**, then:
+   1. Open **System Settings > Privacy & Security** and scroll down to **Security**.
+   2. Click **Open Anyway** next to the message about Mac Action Recorder. (Apple says this button is available for about an hour after you try to open the app. If it is gone, try opening the app once more.)
+   3. Enter your password or use Touch ID, then click **Open Anyway** once more.
 
-Everything the build needs is in the zip. The first build needs an internet connection only if Xcode has to download components.
+   These are the steps in [Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac). You only do this once. Terminal alternative: `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"`, then open the app.
+5. **The Welcome window opens.** Go through it from top to bottom:
+   1. **Set Up This Mac.** The app moves itself to Applications if needed, signs itself with a certificate created on your Mac, and reopens. If macOS asks whether `codesign` may use a key, choose **Always Allow**. This step exists because macOS ties privacy permissions to the app's signature; without it, permissions stop working after every update.
+   2. **Allow Input Monitoring and Accessibility.** The buttons open the right System Settings pages. Switch **Mac Action Recorder** on in each list (use `+` and pick it from Applications if it is not listed). The checkmarks in the Welcome window turn green by themselves; if a switch is on but still says *Not granted*, click **Quit and Reopen**.
+   3. **Updates** (on by default) and the **AI helper** note need no action.
+6. **Click Enter.** The Welcome window closes and you are in the app. You can open it again any time from **Help > Welcome & Setup** or the menu bar item.
 
-### Option A: build from source in Terminal
+If you skip a Welcome step, nothing breaks: recording and playback simply stay unavailable until their permission is granted.
+
+### What gets installed, and what does not
+
+- The app itself (about a few MB) in `/Applications`.
+- Your settings and recordings in `~/Library/Application Support/Mac Action Recorder`.
+- A self-signed certificate named *Mac Action Recorder Local Signing* in your login keychain (created by *Set Up This Mac*). It is only used to sign this app on this Mac. You can delete it in Keychain Access.
+- The app downloads no dependencies, because it has none. The only network use is the optional update check.
+
+To uninstall: quit the app, drag it from Applications to the Trash, and delete the support folder above if you want your recordings gone. Remove the app from the Privacy lists in System Settings if you like.
+
+### Other ways to install
+
+**Download the source zip and build it.** Needs **Xcode** (free, Mac App Store; on macOS 27 the standalone Command Line Tools are not enough: the build fails with `plugin for module 'SwiftUIMacros' not found`). After installing it, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
+
+1. On the repository page click **Code > Download ZIP** and unpack it.
+2. Right-click `Install.command` > **Open** > **Open**. It builds the app, copies it to `/Applications`, and opens it.
+
+**Build in Terminal:**
 
 ```bash
-git clone https://github.com/<your-username>/mac-action-recorder.git
+git clone https://github.com/lucaslucas198/mac-action-recorder.git
 cd mac-action-recorder
-./init/setup.sh
-```
-
-`init/setup.sh` checks your macOS and Swift versions, runs the unit tests, builds the app, and prints the permission steps. The result is `build/Mac Action Recorder.app`, plus a zip next to it.
-
-```bash
+./init/setup.sh          # runs the tests, builds the app, prints the permission steps
 open "build/Mac Action Recorder.app"
 ```
 
-To build without running the tests: `./scripts/build_app.sh`. Environment variables for that script:
+To build without running the tests: `./scripts/build_app.sh`. To make the disk image yourself: `./scripts/make_dmg.sh`. Environment variables for the build script:
 
 | Variable | Meaning |
 | --- | --- |
-| `VERSION` | Version string written into the app (default `0.1.0`) |
+| `VERSION` | Version string written into the app (default: the `VERSION` file) |
 | `BUILD_NUMBER` | Build number (default `1`) |
-| `CODESIGN_IDENTITY` | Signing identity (default `-`, ad-hoc) |
+| `CODESIGN_IDENTITY` | Signing identity (default: a local certificate created on first use, else ad-hoc `-`) |
+| `STABLE_SIGNING=0` | Always sign ad-hoc |
 | `NATIVE_ONLY=1` | Build only for this Mac's architecture (default tries a universal arm64 + x86_64 build and falls back) |
 
 You can also open `Package.swift` in Xcode (File > Open) and run the `MacActionRecorder` scheme. Running from Xcode works, but macOS then grants permissions to Xcode's build product, not to a copy in `build/`.
-
-### Option B: download a release build
-
-Pushing a tag such as `v0.1.0` makes GitHub Actions build the app and attach a zip to a GitHub Release. These builds are **ad-hoc signed and not notarized**. After downloading, macOS may refuse to open it. Fix that with either right-click > Open, or:
-
-```bash
-xattr -dr com.apple.quarantine "/path/to/Mac Action Recorder.app"
-```
-
-Notarization needs an Apple Developer account ($99/year) and signing credentials that this repository does not contain. See [Notarization](#code-signing-and-notarization).
 
 ## Permissions (required)
 
@@ -168,18 +181,18 @@ The password check is a guess based on the shape of the text, and can be wrong e
 
 ## Updates
 
-The app checks this repository for a newer version shortly after launch and then every few hours (Settings > Updates, on by default).
+The app checks GitHub for a newer version shortly after launch (once the Welcome screen has been closed) and then every few hours (Settings > Updates, on by default).
 
-1. **Check:** it reads one text file, `VERSION`, from `raw.githubusercontent.com/<this repo>/main`. That is the only network request. It sends no recordings, settings or personal data (GitHub sees your IP address, like any web request).
-2. **Build:** if the version is newer, the app downloads the newest source from the same repository and builds it with Xcode in the background. It needs the same Xcode you used to install it. The installed app is not touched.
+1. **Check:** it asks GitHub for this repository's latest release (`api.github.com/repos/lucaslucas198/mac-action-recorder/releases/latest`). That is the only network request besides the download. It sends no recordings, settings or personal data (GitHub sees your IP address, like any web request).
+2. **Download:** if the version is newer, the app downloads the finished app from that release (`MacActionRecorder-macOS.zip`), checks that it is Mac Action Recorder and that its signature is intact, and signs it for your Mac with the same local certificate. No Xcode, no building. The installed app is not touched.
 3. **Install:** a banner says the update is ready. **Restart to Update** replaces the app and reopens it. Nothing is installed without that click.
 
 Notes:
 
-- The update runs code from this repository's `main` branch, which whoever can push to it controls. If you do not want that, turn the checks off in Settings > Updates and update manually with `git pull` and `./init/setup.sh`.
-- The version number comes from the `VERSION` file. **Bump it whenever you push a change you want installed apps to pick up**; otherwise they will not notice.
-- Updates are built with the same local signing certificate as your first build, so macOS permissions should carry over. This is expected but has not been verified.
-- Your first install, and any copy built before this feature existed, must be updated by hand once (`git pull`, `./init/setup.sh`, copy to `/Applications`).
+- A new version is only offered once it is published as a GitHub **Release** (pushing a tag like `v0.3.1` does this through GitHub Actions). Changes on `main` alone do not reach installed apps.
+- The update is whatever the release contains, so it is controlled by whoever can publish releases to this repository. If you do not want that, turn the checks off in Settings > Updates.
+- Because the update is signed with the same local certificate, macOS permissions should carry over. This is the intended design and has not been verified across a real update yet. If permissions stop working, see [Troubleshooting](#troubleshooting).
+- Copies older than 0.3.0 check the old way (they build from source). Install 0.3.0 once from the disk image, or update by hand, and later updates use releases.
 - Updating is unavailable when the app is started with `swift run`, because there is no app bundle to replace.
 
 ## Privacy and safety
@@ -265,8 +278,11 @@ Raise *Delay per typed character* and *Minimum action delay* in Settings > Playb
 **The emergency-stop shortcut does nothing.**
 It needs Input Monitoring. It also must include `⌃`, `⌥` or `⌘`. Change it in Settings > Playback. The Emergency Stop button and the menu bar item always work.
 
-**macOS says the app is damaged or from an unidentified developer.**
-This applies to downloaded release zips because they are not notarized. Use right-click > Open, or run `xattr -dr com.apple.quarantine "<path to the .app>"`.
+**macOS says it cannot verify the app, or that it is damaged.**
+Expected for downloaded releases (not notarized). Follow step 4 of the [install steps](#step-by-step): System Settings > Privacy & Security > Open Anyway, or run `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"`. If *Open Anyway* is missing, try opening the app again; it is only offered for about an hour after an attempt.
+
+**The Welcome window's *Set Up This Mac* step fails or loops.**
+It needs write access to `/Applications` (an administrator account) and permission to use the keychain. If it reports that no signing certificate could be created, the app still works, but macOS may forget its permissions after updates. You can also run `scripts/ensure_signing_identity.sh` from the source folder in Terminal to see why the certificate cannot be made.
 
 **The app window disappeared.**
 Closing the window leaves the app running in the menu bar. Choose **Show Window** from the menu bar item. The window also hides itself during recording and playback if you left those options on.
@@ -279,13 +295,21 @@ Check `swift --version` (5.9 or newer) and macOS 13 or newer. Open an issue and 
 
 ## Code signing and notarization
 
-Builds are signed ad-hoc (`codesign --sign -`), which is enough to run on the Mac that built them. To distribute a build that opens without warnings on other Macs you need:
+**Release builds are not notarized.** Apple only notarizes apps from paid Apple Developer accounts ($99/year), and this repository has no such credentials. That is why macOS shows the "cannot verify" message the first time (see [Install](#install-on-a-mac-no-xcode-needed), step 4). The app's source code is in this repository, so you can read or build it yourself.
+
+How signing works here:
+
+- GitHub Actions builds the release and signs it **ad hoc** (no identity). An ad-hoc signature is enough to run, but it is different for every build.
+- *Set Up This Mac* (and every update) then re-signs the app **on your Mac** with a self-signed certificate that exists only in your login keychain. Re-signing with the same certificate each time keeps the signature requirement identical, which is what lets macOS keep your Accessibility and Input Monitoring permissions across updates. This does not make the app trusted by Gatekeeper and is not Apple notarization.
+- No private key is ever published or stored in this repository.
+
+To distribute a build that opens without any warning you would need:
 
 1. An Apple Developer account and a *Developer ID Application* certificate.
 2. `CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/build_app.sh`
 3. Notarization: `xcrun notarytool submit <zip> --apple-id … --team-id … --password … --wait`, then `xcrun stapler staple` on the app.
 
-None of that is configured here because it needs credentials that must not be committed. If you add them, store them as GitHub Actions secrets.
+If you add credentials, store them as GitHub Actions secrets, never in the repository.
 
 ## Publishing this repository to GitHub
 
@@ -299,7 +323,7 @@ git push -u origin main
 
 Create the empty repository first at <https://github.com/new> (no README, no license), or with the GitHub CLI: `gh repo create mac-action-recorder --private --source=. --push`.
 
-To publish a downloadable build: `git tag v0.1.0 && git push origin v0.1.0`.
+To publish a downloadable build (this is what installed apps update from): bump the `VERSION` file, commit, push, then `git tag v0.3.1 && git push origin v0.3.1` (use the same number as `VERSION`). GitHub Actions builds the app, makes the disk image and the update zip, and publishes the release. Check the **Actions** tab if the release does not appear.
 
 ## Recording format
 

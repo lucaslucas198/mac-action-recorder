@@ -3,6 +3,8 @@ import MacActionRecorderCore
 import SwiftUI
 
 struct MainView: View {
+    @EnvironmentObject private var model: AppModel
+
     var body: some View {
         VStack(spacing: 0) {
             HeaderView()
@@ -18,6 +20,10 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 880, minHeight: 620)
+        .sheet(isPresented: $model.showingWelcome) {
+            WelcomeView()
+                .environmentObject(model)
+        }
     }
 }
 

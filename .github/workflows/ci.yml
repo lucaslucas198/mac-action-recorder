@@ -7,6 +7,8 @@ on:
   pull_request:
 
 jobs:
+  # Builds and tests the code on a runner with an older Xcode. The on-device AI code is compiled
+  # out there (its framework needs the macOS 26 SDK), so this job checks everything else.
   build-and-test:
     runs-on: macos-14
     permissions:
@@ -21,7 +23,10 @@ jobs:
           swift --version
 
       - name: Check shell scripts parse
-        run: bash -n Install.command && bash -n init/setup.sh && bash -n scripts/build_app.sh
+        run: |
+          for f in Install.command init/setup.sh scripts/*.sh; do
+            bash -n "$f" && echo "ok  $f"
+          done
 
       - name: Build (debug)
         run: swift build
@@ -29,25 +34,64 @@ jobs:
       - name: Run unit tests
         run: swift test
 
-      - name: Build app bundle
-        run: ./scripts/build_app.sh
+  # Builds the app the way users download it: a .dmg to drag into Applications, plus a .zip that
+  # the in-app updater uses. Runs on the newest runner so the AI features are compiled in.
+  package:
+    needs: build-and-test
+    runs-on: macos-26
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain info
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Build the app
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            export VERSION="${GITHUB_REF_NAME#v}"
+          else
+            export VERSION="0.0.0-ci"
+          fi
+          ./scripts/build_app.sh
         env:
-          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-ci' }}
           BUILD_NUMBER: ${{ github.run_number }}
 
-      - name: Upload app bundle
-        uses: actions/upload-artifact@v4
+      - name: Make the disk image and the update zip
+        run: |
+          mkdir -p dist
+          ./scripts/make_dmg.sh "build/Mac Action Recorder.app" dist/MacActionRecorder-macOS.dmg
+          ditto -c -k --keepParent "build/Mac Action Recorder.app" dist/MacActionRecorder-macOS.zip
+          ls -la dist
+
+      - name: Check the disk image contents
+        run: |
+          hdiutil attach dist/MacActionRecorder-macOS.dmg -mountpoint /tmp/dmgcheck -nobrowse -quiet
+          ls -la /tmp/dmgcheck
+          test -d "/tmp/dmgcheck/Mac Action Recorder.app"
+          test -L /tmp/dmgcheck/Applications
+          codesign --verify --deep --strict "/tmp/dmgcheck/Mac Action Recorder.app"
+          for s in update.sh prepare_app.sh ensure_signing_identity.sh; do
+            test -f "/tmp/dmgcheck/Mac Action Recorder.app/Contents/Resources/$s"
+          done
+          hdiutil detach /tmp/dmgcheck -quiet
+
+      - uses: actions/upload-artifact@v4
         with:
           name: MacActionRecorder-macOS
-          path: build/MacActionRecorder-*-macOS.zip
+          path: dist/*
           if-no-files-found: error
 
   release:
-    # Publishes the zip to GitHub Releases when you push a tag such as v0.1.0.
-    # The app is ad-hoc signed and NOT notarized (no Apple Developer credentials
-    # are used here). See README > "Code signing and notarization".
+    # Publishes the .dmg and .zip to GitHub Releases when a tag such as v0.3.0 is pushed.
+    # The app is ad-hoc signed and NOT notarized (no Apple Developer credentials are used here).
+    # See README > "Code signing and notarization".
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build-and-test
+    needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -58,5 +102,12 @@ jobs:
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: |
+            dist/MacActionRecorder-macOS.dmg
+            dist/MacActionRecorder-macOS.zip
+          fail_on_unmatched_files: true
           generate_release_notes: true
+          body: |
+            **Install:** download `MacActionRecorder-macOS.dmg`, open it, and drag *Mac Action Recorder* onto *Applications*. Step-by-step instructions, including the one-time "Open Anyway" approval macOS asks for, are in the [README](https://github.com/${{ github.repository }}#install-on-a-mac-no-xcode-needed).
+
+            The app is not notarized by Apple. `MacActionRecorder-macOS.zip` is the same app, used by the in-app updater.

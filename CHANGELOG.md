@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.3.0
+
+Added (CI compiles and unit-tests the core on macOS 14; see README > Verification status for what is and is not verified):
+
+- Downloadable disk image (`MacActionRecorder-macOS.dmg`) on GitHub Releases: drag the app onto Applications. No Xcode needed.
+- Welcome screen on first launch with live permission status and an **Enter** button; reopen from Help > Welcome & Setup or the menu bar item. "Set Up This Mac" moves the app to Applications and signs it with a local certificate so permissions survive updates.
+- Updater now downloads the finished app from GitHub Releases (`MacActionRecorder-macOS.zip`) instead of building from source. Update checks start only after the Welcome screen has been closed.
+- `scripts/make_dmg.sh`, `scripts/prepare_app.sh`; release workflow builds on a macOS 26 runner so the on-device AI features are included.
+
 - 0.2.1: Permission diagnostics report in Settings > Permissions & Privacy (shows whether the signature is stable, which copy is running, and what macOS reports).
 
 Added (not yet compiled or run):
