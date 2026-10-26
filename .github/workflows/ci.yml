@@ -97,21 +97,54 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # Optional. When this repository secret exists, the .dmg is scanned on VirusTotal and the
+      # result VirusTotal returns is added to the release notes. Without it the step is skipped.
+      VT_API_KEY: ${{ secrets.VT_API_KEY }}
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: MacActionRecorder-macOS
           path: dist
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum MacActionRecorder-macOS.dmg MacActionRecorder-macOS.zip | tee SHA256SUMS.txt
+
+      - name: VirusTotal scan (only if the VT_API_KEY secret is set)
+        if: env.VT_API_KEY != ''
+        run: python3 scripts/ci/virustotal_scan.py dist/MacActionRecorder-macOS.dmg vt_result.md
+
+      - name: Write the release notes
+        run: |
+          {
+            echo '> [!CAUTION]'
+            echo '> **macOS will block the app the first time you open it.** It will say "Apple could not verify Mac Action Recorder is free of malware". This is expected: the app is not notarized by Apple. Click **Done** (not Move to Trash), then open **System Settings > Privacy & Security** and click **Open Anyway**. Or run `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"` in Terminal.'
+            echo
+            echo '**Install:** under *Assets* below, download **`MacActionRecorder-macOS.dmg`**, open it, and drag *Mac Action Recorder* onto *Applications*. Do not download "Source code (zip)": that is the program'"'"'s source files, not the app.'
+            echo
+            echo "Step-by-step instructions are in the [README](https://github.com/${GITHUB_REPOSITORY}#install-on-a-mac-no-xcode-needed). \`MacActionRecorder-macOS.zip\` is the same app, used by the in-app updater."
+            echo
+            if [ -f vt_result.md ]; then
+              cat vt_result.md
+              echo
+            else
+              echo "No VirusTotal scan was run for this release. See the README section \"Is it safe?\" for how to check the file yourself."
+              echo
+            fi
+            echo "Checksums are in \`SHA256SUMS.txt\`."
+          } > release_body.md
+          cat release_body.md
+
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/MacActionRecorder-macOS.dmg
             dist/MacActionRecorder-macOS.zip
+            dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
           generate_release_notes: true
-          body: |
-            **Install:** under *Assets* below, download **`MacActionRecorder-macOS.dmg`**, open it, and drag *Mac Action Recorder* onto *Applications*. Do not download "Source code (zip)": that is the program's source files, not the app.
-
-            Step-by-step instructions, including the one-time "Open Anyway" approval macOS asks for, are in the [README](https://github.com/${{ github.repository }}#install-on-a-mac-no-xcode-needed).
-
-            The app is not notarized by Apple. `MacActionRecorder-macOS.zip` is the same app, used by the in-app updater.
+          body_path: release_body.md

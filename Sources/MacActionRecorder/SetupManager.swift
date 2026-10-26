@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import MacActionRecorderCore
 
 /// Runs the "Set Up This Mac" step of the Welcome screen: puts the app in Applications and signs it
 /// with a certificate made on this Mac, so macOS permissions keep working after updates.
@@ -9,7 +10,7 @@ final class SetupManager: ObservableObject {
 
     enum Phase: Equatable {
         case idle
-        case working
+        case working(SetupStage)
         case failed(String)
     }
 
@@ -17,21 +18,27 @@ final class SetupManager: ObservableObject {
     /// Shown after a run that could not create the certificate but left the app usable.
     @Published private(set) var note: String?
 
-    private init() {}
-
     /// True once the app is in Applications with a fixed signature (or signing was tried and is
-    /// not possible here).
-    var isDone: Bool {
-        return !AppInstaller.needsSetup
+    /// not possible here). Worked out once (reading the signature is not free) and updated when
+    /// a run finishes, instead of on every screen redraw.
+    @Published private(set) var isDone: Bool
+
+    private init() {
+        isDone = !AppInstaller.needsSetup
+    }
+
+    var isWorking: Bool {
+        if case .working = phase { return true }
+        return false
     }
 
     func run() {
-        guard phase != .working else { return }
+        guard !isWorking else { return }
         if AppModel.shared.status.isBusy {
             phase = .failed("Finish or stop the current recording or playback first.")
             return
         }
-        phase = .working
+        phase = .working(.copying)
         note = nil
 
         AppInstaller.makeWorkingCopy { [weak self] result in
@@ -40,6 +47,7 @@ final class SetupManager: ObservableObject {
             case .failure(let error):
                 self.phase = .failed(error.localizedDescription)
             case .success(let copy):
+                self.phase = .working(.signing)
                 AppInstaller.prepare(copy) { [weak self] outcome in
                     self?.finish(copy: copy, outcome: outcome)
                 }
@@ -57,6 +65,7 @@ final class SetupManager: ObservableObject {
             if AppInstaller.isInstalledInApplications {
                 // Nothing to move and nothing to sign with: keep the app as it is.
                 phase = .idle
+                isDone = true
                 note = "A signing certificate could not be created on this Mac. The app works, but macOS may forget its permissions after each update; you would then switch them on again."
                 return
             }
@@ -64,6 +73,7 @@ final class SetupManager: ObservableObject {
             AppInstaller.signingUnavailable = false
         }
 
+        phase = .working(.installing)
         do {
             try AppInstaller.swapAndRelaunch(staged: copy, destination: AppInstaller.destination)
         } catch {

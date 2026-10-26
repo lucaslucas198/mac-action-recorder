@@ -2,14 +2,57 @@ import AppKit
 import MacActionRecorderCore
 import SwiftUI
 
-/// The first-run screen. It checks what this Mac still needs, offers to do each part, and closes
-/// with the Enter button. It can be opened again from the Help menu.
+/// The first-run flow, in two pages:
+///
+/// 1. A home page with the big logo and a **Get Started** button.
+/// 2. The setup page: sets the app up on this Mac, shows the live status of the two permissions,
+///    and closes with the **Enter** button.
+///
+/// It can be opened again from Help > Welcome & Setup. After "Set Up This Mac" reopens the app,
+/// it starts on the setup page, because the home page was already seen.
 struct WelcomeView: View {
+    private enum Page {
+        case home
+        case setup
+    }
+
+    private static let homeSeenKey = "welcomeHomeSeen"
+
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var setup = SetupManager.shared
-    @ObservedObject private var updates = UpdateManager.shared
+    @State private var page: Page = UserDefaults.standard.bool(forKey: WelcomeView.homeSeenKey) ? .setup : .home
+    @State private var ai: AIStatus?
+
+    private struct AIStatus {
+        let isAvailable: Bool
+        let message: String
+    }
 
     var body: some View {
+        ZStack {
+            switch page {
+            case .home:
+                HomePage(onStart: getStarted)
+                    .transition(.opacity)
+            case .setup:
+                setupPage
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 600, height: 590)
+        .interactiveDismissDisabled(true)
+    }
+
+    private func getStarted() {
+        UserDefaults.standard.set(true, forKey: WelcomeView.homeSeenKey)
+        withAnimation(.easeInOut(duration: 0.25)) {
+            page = .setup
+        }
+    }
+
+    // MARK: Setup page
+
+    private var setupPage: some View {
         VStack(spacing: 0) {
             header
             Divider()
@@ -26,21 +69,24 @@ struct WelcomeView: View {
             Divider()
             footer
         }
-        .frame(width: 600, height: 640)
-        .interactiveDismissDisabled(true)
+        .onAppear {
+            // Asked once, not on every redraw.
+            if ai == nil {
+                let found = AIAssistant.availability
+                ai = AIStatus(isAvailable: found.isAvailable, message: found.message)
+            }
+        }
     }
-
-    // MARK: Pieces
 
     private var header: some View {
         HStack(spacing: 14) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
-                .frame(width: 56, height: 56)
+                .frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Welcome to Mac Action Recorder")
+                Text("Set up Mac Action Recorder")
                     .font(.title2.weight(.semibold))
-                Text("Record your mouse and keyboard once, then play it back at any speed.")
+                Text("Three short steps. You can finish them later from Help > Welcome & Setup.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -51,25 +97,18 @@ struct WelcomeView: View {
 
     private var setupStep: some View {
         let done = setup.isDone
-        return StepCard(
-            number: 1,
-            title: "Set up this Mac",
-            done: done
-        ) {
+        return StepCard(number: 1, title: "Set up this Mac", done: done) {
             Text(done
                  ? "The app is in Applications and signed on this Mac, so the permissions below stay switched on after updates."
-                 : "Moves the app to Applications and signs it with a certificate made on this Mac. Do this before the permissions, because macOS ties each permission to the app's signature. The app reopens when it is done. If macOS asks whether \"codesign\" may use a key, choose Always Allow.")
+                 : "Moves the app to Applications and signs it with a certificate made on this Mac. Do this before the permissions, because macOS ties each permission to the app's signature. The app reopens when it is done.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if !done {
-                HStack {
+                if case .working(let stage) = setup.phase {
+                    progress(for: stage)
+                } else {
                     Button("Set Up This Mac") { setup.run() }
-                        .disabled(setup.phase == .working)
-                    if setup.phase == .working {
-                        ProgressView().controlSize(.small)
-                        Text("Working…").font(.callout).foregroundStyle(.secondary)
-                    }
                 }
             }
             if case .failed(let message) = setup.phase {
@@ -83,6 +122,28 @@ struct WelcomeView: View {
                 Text(note)
                     .font(.callout)
                     .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The loading bar. It moves when a stage really begins; the text says what is happening.
+    private func progress(for stage: SetupStage) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ProgressView(value: stage.fraction)
+                .animation(.easeInOut(duration: 0.4), value: stage.fraction)
+            HStack {
+                Text(stage.title)
+                    .font(.callout.weight(.medium))
+                Spacer()
+                Text(stage.stepText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let hint = stage.hint {
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -137,14 +198,17 @@ struct WelcomeView: View {
     }
 
     private var aiStep: some View {
-        let availability = AIAssistant.availability
-        return StepCard(number: 4, title: "On-device AI helper (optional)", done: nil) {
-            Text(availability.isAvailable
-                 ? "Available. It runs on this Mac and can suggest ways to make a macro more reliable. You always choose which changes to apply."
-                 : availability.message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        StepCard(number: 4, title: "On-device AI helper (optional)", done: nil) {
+            if let ai = ai {
+                Text(ai.isAvailable
+                     ? "Available. It runs on this Mac and can suggest ways to make a macro more reliable. You always choose which changes to apply."
+                     : ai.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ProgressView().controlSize(.small)
+            }
         }
     }
 
@@ -157,19 +221,18 @@ struct WelcomeView: View {
 
     private var footer: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                if !(model.inputMonitoringGranted && model.accessibilityGranted && setup.isDone) {
-                    Text("Something above is not finished. You can still enter and finish later: Help > Welcome & Setup.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if !(model.inputMonitoringGranted && model.accessibilityGranted && setup.isDone) {
+                Text("Something above is not finished. You can still enter and finish later.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Button("Enter") { enter() }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .disabled(setup.isWorking)
         }
         .padding(16)
     }
@@ -189,11 +252,59 @@ struct WelcomeView: View {
     private func enter() {
         model.settings.hasCompletedWelcome = true
         model.showingWelcome = false
-        updates.startSchedule()
+        UpdateManager.shared.startSchedule()
     }
 }
 
-/// A numbered box in the Welcome screen with a done checkmark (or none, for optional steps).
+// MARK: - Home page
+
+/// The first thing a new user sees: the logo, the name, and one button.
+private struct HomePage: View {
+    let onStart: () -> Void
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.16, green: 0.40, blue: 0.88), Color(red: 0.08, green: 0.22, blue: 0.58)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(spacing: 0) {
+                Spacer()
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 170, height: 170)
+                    .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
+                Text("Mac Action Recorder")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.top, 22)
+                Text("Record once. Replay at any speed.")
+                    .font(.title3)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.top, 6)
+                Spacer()
+                Button(action: onStart) {
+                    Text("Get Started")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color(red: 0.08, green: 0.22, blue: 0.58))
+                        .frame(width: 300, height: 52)
+                        .background(Capsule().fill(Color.white))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
+                Text("A short setup follows. Everything stays on this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.top, 12)
+                    .padding(.bottom, 34)
+            }
+        }
+    }
+}
+
+/// A numbered box in the setup page with a done checkmark (or none, for optional steps).
 private struct StepCard<Content: View>: View {
     let number: Int
     let title: String

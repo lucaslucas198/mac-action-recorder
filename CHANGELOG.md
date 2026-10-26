@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.3.2
+
+- Welcome flow is now two pages: a home page with the big logo and a **Get Started** button, then the setup page ending in **Enter**. After "Set Up This Mac" reopens the app it starts on the setup page.
+- "Set Up This Mac" shows a progress bar with three stages (copying, signing, installing) and what each one is doing.
+- Disk image window shows a red box saying what macOS will say the first time and how to get past it. The README and release notes have the same warning.
+- Release workflow publishes `SHA256SUMS.txt` and, if the owner adds a `VT_API_KEY` secret, adds VirusTotal's reported result to the release notes (it never claims a clean result by itself). README has an "Is it safe?" section.
+- Faster launch: the automatic backup of recordings now runs a few seconds later on a background thread, and the Welcome screen no longer re-reads the app signature on every redraw.
+
 ## 0.3.1
 
 - Disk image now opens with a styled window: app on the left, Applications on the right, an arrow, and the first-run "Open Anyway" hint. Built with dmgbuild; CI fails if the styled image cannot be made. (Not yet seen on a real Mac.)

@@ -60,9 +60,16 @@ def draw(scale):
     d.rounded_rectangle([x0, y - thick // 2, x1 - head + 2 * scale, y + thick // 2], radius=thick // 2, fill=color)
     d.polygon([(x1 - head, y - head * 0.75), (x1, y), (x1 - head, y + head * 0.75)], fill=color)
 
+    # Red warning box: tells people what macOS will say the first time, before it happens.
+    red = (200, 38, 38)
+    d.rounded_rectangle([40 * scale, 292 * scale, 620 * scale, 384 * scale], radius=10 * scale, fill=red)
+    bold = font(BOLD, 14 * scale)
     small = font(FONTS, 13 * scale)
-    centered("First time only: if macOS says it cannot verify the app, open", 340 * scale, small, (235, 239, 245))
-    centered("System Settings > Privacy & Security and click Open Anyway.", 360 * scale, small, (235, 239, 245))
+    white = (255, 255, 255)
+    centered("macOS will say: \u201cApple could not verify Mac Action Recorder\u2026\u201d", 302 * scale, bold, white)
+    centered("This is expected: the app is not notarized by Apple. Click Done (NOT Move to Trash),", 328 * scale, small, white)
+    centered("then open System Settings > Privacy & Security and click Open Anyway.", 348 * scale, small, white)
+    centered("Or in Terminal: xattr -dr com.apple.quarantine \"/Applications/Mac Action Recorder.app\"", 366 * scale, small, white)
     return img
 
 

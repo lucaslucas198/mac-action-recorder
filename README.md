@@ -31,6 +31,9 @@ You download one file, drag one app, and the app's Welcome screen does the rest.
 
 **Requirements:** macOS 13 (Ventura) or newer, Apple Silicon or Intel. Nothing else has to be installed. The optional on-device AI helper needs macOS 26 or newer with Apple Intelligence turned on; the app tells you if it is not available.
 
+> [!CAUTION]
+> **macOS will block the app the first time you open it.** It will say *"Apple could not verify 'Mac Action Recorder' is free of malware"* with the buttons **Move to Trash** and **Done**. This is expected: the app is not notarized by Apple (see [why](#code-signing-and-notarization)). Click **Done**, not Move to Trash, then follow step 4 below.
+
 ### Step by step
 
 1. **Download** `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest). It is in the **Assets** list at the bottom of the release. Do **not** use "Source code (zip)" or the green **Code > Download ZIP** button: those are the program's source files, not the app.
@@ -194,6 +197,18 @@ Notes:
 - Because the update is signed with the same local certificate, macOS permissions should carry over. This is the intended design and has not been verified across a real update yet. If permissions stop working, see [Troubleshooting](#troubleshooting).
 - Copies older than 0.3.0 check the old way (they build from source). Install 0.3.0 once from the disk image, or update by hand, and later updates use releases.
 - Updating is unavailable when the app is started with `swift run`, because there is no app bundle to replace.
+
+## Is it safe?
+
+What I can state, and what I cannot:
+
+- **The source code is public** in this repository, and the downloadable app is built from it by GitHub Actions. The build logs are public in the repository's **Actions** tab.
+- **It is not notarized by Apple**, so macOS cannot vouch for it. That is why the warning above appears.
+- **It does read your keyboard and mouse**, but only after you click Start Recording, with a visible indicator, and it only saves what you record on your Mac. See [Privacy and safety](#privacy-and-safety).
+- **Check your download:** each release has a `SHA256SUMS.txt`. In Terminal, `shasum -a 256 ~/Downloads/MacActionRecorder-macOS.dmg` must print the same value as the line for the `.dmg`.
+- **VirusTotal:** when the repository owner has set up the optional `VT_API_KEY` secret, the release workflow uploads the `.dmg` to [VirusTotal](https://www.virustotal.com) and adds the result VirusTotal returned (how many vendors flagged it) to the release notes. A release whose notes say no scan was run has no VirusTotal result. You can scan any file yourself by dragging it onto virustotal.com. A result with no detections is evidence, not proof of safety, and programs that watch keyboard and mouse input can be flagged by mistake (a false positive).
+
+Setting up the scan (repository owner): create a free VirusTotal account, copy your API key from your profile page, then in the repository go to **Settings > Secrets and variables > Actions > New repository secret**, name it `VT_API_KEY`, and paste the key. It is used on the next release.
 
 ## Privacy and safety
 

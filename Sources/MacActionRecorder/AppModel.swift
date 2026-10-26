@@ -240,8 +240,14 @@ final class AppModel: ObservableObject {
         selectedID = recordings.first?.id
         applyDefaults(from: current)
 
-        if settings.backupEnabled && !recordings.isEmpty {
-            _ = try? store?.createBackup(into: backupDirectory, keep: settings.backupKeepCount)
+        // The launch backup copies every recording file. Do it a moment later and off the main
+        // thread so it never delays the window appearing.
+        if settings.backupEnabled && !recordings.isEmpty, let backupStore = store {
+            let root = backupDirectory
+            let keep = settings.backupKeepCount
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3) {
+                _ = try? backupStore.createBackup(into: root, keep: keep)
+            }
         }
 
         showingWelcome = !settings.hasCompletedWelcome

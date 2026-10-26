@@ -119,3 +119,27 @@ final class UpdateTests: XCTestCase {
         XCTAssertFalse(off.autoBuildUpdates)
     }
 }
+
+final class SetupStageTests: XCTestCase {
+    func testStagesAreOrderedAndFractionsIncreaseWithoutReachingOne() {
+        let stages = SetupStage.allCases
+        XCTAssertEqual(stages.count, 3)
+        XCTAssertEqual(SetupStage.count, 3)
+        var previous = 0.0
+        for stage in stages {
+            XCTAssertGreaterThan(stage.fraction, previous)
+            XCTAssertLessThan(stage.fraction, 1.0)
+            previous = stage.fraction
+        }
+    }
+
+    func testTextsAreFilledInAndStepsCountFromOne() {
+        XCTAssertEqual(SetupStage.copying.stepText, "Step 1 of 3")
+        XCTAssertEqual(SetupStage.installing.stepText, "Step 3 of 3")
+        for stage in SetupStage.allCases {
+            XCTAssertFalse(stage.title.isEmpty)
+        }
+        XCTAssertNotNil(SetupStage.signing.hint)
+        XCTAssertNil(SetupStage.copying.hint)
+    }
+}
