@@ -285,6 +285,7 @@ struct StorageSettingsTab: View {
 struct PermissionsSettingsTab: View {
     @EnvironmentObject private var model: AppModel
     @State private var confirmReset = false
+    @State private var diagnostics = ""
 
     var body: some View {
         Form {
@@ -321,6 +322,24 @@ struct PermissionsSettingsTab: View {
                     Button("Copy App Path") { Permissions.copyAppPath() }
                     Button("Reset This App's Permissions…") { confirmReset = true }
                     Button("Quit and Reopen") { Permissions.relaunch() }
+                }
+                HStack {
+                    Button("Run Permission Diagnostics") { diagnostics = Permissions.diagnosticsReport() }
+                    if !diagnostics.isEmpty {
+                        Button("Copy Report") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(diagnostics, forType: .string)
+                        }
+                    }
+                }
+                if !diagnostics.isEmpty {
+                    Text(diagnostics)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.secondary.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
 

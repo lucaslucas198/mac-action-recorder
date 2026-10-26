@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import Security
 
 /// The two macOS privacy permissions this app needs.
 ///
@@ -58,6 +59,51 @@ enum Permissions {
 
     static func openInputMonitoringSettings() {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
+    }
+
+    // MARK: Diagnostics
+
+    /// The code-signing requirement macOS matches permissions against, e.g. `cdhash H"..."` for an
+    /// ad-hoc signature (changes with every build) or `certificate leaf = H"..."` for a stable one.
+    static func signatureRequirement() -> String {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(appURL as CFURL, [], &staticCode) == errSecSuccess,
+              let code = staticCode else {
+            return "unavailable (not a signed app bundle)"
+        }
+        var requirement: SecRequirement?
+        guard SecCodeCopyDesignatedRequirement(code, [], &requirement) == errSecSuccess,
+              let found = requirement else {
+            return "unavailable (no designated requirement)"
+        }
+        var text: CFString?
+        guard SecRequirementCopyString(found, [], &text) == errSecSuccess, let string = text else {
+            return "unavailable"
+        }
+        return string as String
+    }
+
+    /// A plain-text report for troubleshooting "I switched it on but it says I didn't".
+    static func diagnosticsReport() -> String {
+        let requirement = signatureRequirement()
+        var lines: [String] = []
+        lines.append("App path: \(appURL.path)")
+        lines.append("Bundle id: \(Bundle.main.bundleIdentifier ?? "none")")
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        lines.append("Version: \(version ?? "unknown")")
+        lines.append("Accessibility (AXIsProcessTrusted): \(accessibilityGranted)")
+        lines.append("Input Monitoring (preflight): \(inputMonitoringGranted)")
+        lines.append("Post events (preflight): \(CGPreflightPostEventAccess())")
+        lines.append("Signature requirement: \(requirement)")
+        if requirement.contains("cdhash") {
+            lines.append("-> Ad-hoc signature: it changes with every build, so permissions granted to an older build no longer match.")
+        }
+        if appURL.path.contains("AppTranslocation") {
+            lines.append("-> Running from a temporary quarantine location. Move the app to /Applications, quit it, and open it from there.")
+        } else if !appURL.path.hasPrefix("/Applications/") {
+            lines.append("-> Not running from /Applications. Permissions are per copy; make sure you granted this exact copy.")
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: Helpers for when the app does not show up in the system lists

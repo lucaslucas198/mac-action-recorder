@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 0.2.1: Permission diagnostics report in Settings > Permissions & Privacy (shows whether the signature is stable, which copy is running, and what macOS reports).
+
 Added (not yet compiled or run):
 
 - Auto-update from the GitHub repository: version check, background build, one-click Restart to Update. Settings > Updates, menu bar item "Check for Updates…". `VERSION` file is now the source of the app version.
