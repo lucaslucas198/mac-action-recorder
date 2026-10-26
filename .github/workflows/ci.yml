@@ -64,7 +64,7 @@ jobs:
       - name: Make the disk image and the update zip
         run: |
           mkdir -p dist
-          ./scripts/make_dmg.sh "build/Mac Action Recorder.app" dist/MacActionRecorder-macOS.dmg
+          REQUIRE_STYLED=1 ./scripts/make_dmg.sh "build/Mac Action Recorder.app" dist/MacActionRecorder-macOS.dmg
           ditto -c -k --keepParent "build/Mac Action Recorder.app" dist/MacActionRecorder-macOS.zip
           ls -la dist
 
@@ -74,6 +74,8 @@ jobs:
           ls -la /tmp/dmgcheck
           test -d "/tmp/dmgcheck/Mac Action Recorder.app"
           test -L /tmp/dmgcheck/Applications
+          test -f /tmp/dmgcheck/.DS_Store
+          test -d /tmp/dmgcheck/.background || ls -a /tmp/dmgcheck
           codesign --verify --deep --strict "/tmp/dmgcheck/Mac Action Recorder.app"
           for s in update.sh prepare_app.sh ensure_signing_identity.sh; do
             test -f "/tmp/dmgcheck/Mac Action Recorder.app/Contents/Resources/$s"
@@ -108,6 +110,8 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: true
           body: |
-            **Install:** download `MacActionRecorder-macOS.dmg`, open it, and drag *Mac Action Recorder* onto *Applications*. Step-by-step instructions, including the one-time "Open Anyway" approval macOS asks for, are in the [README](https://github.com/${{ github.repository }}#install-on-a-mac-no-xcode-needed).
+            **Install:** under *Assets* below, download **`MacActionRecorder-macOS.dmg`**, open it, and drag *Mac Action Recorder* onto *Applications*. Do not download "Source code (zip)": that is the program's source files, not the app.
+
+            Step-by-step instructions, including the one-time "Open Anyway" approval macOS asks for, are in the [README](https://github.com/${{ github.repository }}#install-on-a-mac-no-xcode-needed).
 
             The app is not notarized by Apple. `MacActionRecorder-macOS.zip` is the same app, used by the in-app updater.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.1
+
+- Disk image now opens with a styled window: app on the left, Applications on the right, an arrow, and the first-run "Open Anyway" hint. Built with dmgbuild; CI fails if the styled image cannot be made. (Not yet seen on a real Mac.)
+- Release notes and README say plainly to download the `.dmg`, not "Source code (zip)".
+
 ## 0.3.0
 
 Added (CI compiles and unit-tests the core on macOS 14; see README > Verification status for what is and is not verified):

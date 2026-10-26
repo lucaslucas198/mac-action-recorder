@@ -33,8 +33,8 @@ You download one file, drag one app, and the app's Welcome screen does the rest.
 
 ### Step by step
 
-1. **Download** `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest) (under **Assets**).
-2. **Open the downloaded file** (double-click it in Downloads). A window opens with *Mac Action Recorder* and an *Applications* folder.
+1. **Download** `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest). It is in the **Assets** list at the bottom of the release. Do **not** use "Source code (zip)" or the green **Code > Download ZIP** button: those are the program's source files, not the app.
+2. **Open the downloaded file** (double-click it in Downloads). A window opens showing the app on the left, the *Applications* folder on the right, and an arrow between them.
 3. **Drag *Mac Action Recorder* onto *Applications*.** Then eject the disk image (the eject button next to it in the Finder sidebar).
 4. **Open it for the first time.** In Finder, open *Applications* and double-click *Mac Action Recorder*. macOS will very likely refuse with a message that it cannot verify the app. That is expected, because the app is not notarized (see [why](#code-signing-and-notarization)). Click **Done**, then:
    1. Open **System Settings > Privacy & Security** and scroll down to **Security**.
@@ -75,7 +75,7 @@ cd mac-action-recorder
 open "build/Mac Action Recorder.app"
 ```
 
-To build without running the tests: `./scripts/build_app.sh`. To make the disk image yourself: `./scripts/make_dmg.sh`. Environment variables for the build script:
+To build without running the tests: `./scripts/build_app.sh`. To make the disk image yourself: `./scripts/make_dmg.sh` (needs Python 3 and internet for the window styling; falls back to a plain image otherwise). Environment variables for the build script:
 
 | Variable | Meaning |
 | --- | --- |
