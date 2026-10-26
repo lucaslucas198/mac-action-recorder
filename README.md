@@ -4,7 +4,7 @@
 
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
-> **Status: first version.** The version before the "Improve", "Draft" and "Show Clicks" additions built and passed 155 unit tests on macOS 27.2 with Xcode (Swift 6.4, Apple Silicon); the newest additions have not been built yet (see the table below). Recording and playback in real apps, including Discord, have **not been tested yet**. See [Verification status](#verification-status).
+> **Status: early version.** GitHub Actions compiles it, runs the unit tests, and builds the disk image on every push (see [Verification status](#verification-status)). Recording and playback in real apps, including Discord, the Welcome screen, and updating from one release to the next have **not been tested on a real Mac yet**.
 
 ## What it does
 
@@ -237,11 +237,12 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 
 | Item | Status |
 | --- | --- |
-| Code compiles | **Verified** on macOS 27.2, Xcode, Swift 6.4, Apple Silicon (a release build succeeded). Other macOS/Xcode versions untested. |
-| Unit tests pass | **Verified**: 155 tests, 0 failures, same machine (includes the 14 macro-check tests). They cover only the core logic. |
+| Code compiles | **Verified** by GitHub Actions for version 0.3.0: debug build on macOS 14 (Xcode 15), and the release app build on macOS 26 (current Xcode) including the on-device AI code. Earlier, an install from source was also built on macOS 27.2 / Swift 6.4. |
+| Unit tests pass | **Verified** by GitHub Actions on macOS 14 for 0.3.0 (`swift test` succeeded; the run log was not inspected for a test count). Earlier: 155 tests passed on the author's Mac. They cover only the core logic. |
+| Disk image and update zip | **Built and structurally checked** by GitHub Actions (disk image mounts; contains the app and an Applications link; app signature verifies; helper scripts are inside). **Not yet opened or installed on a real Mac by the author.** |
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
-| Check macro, AI review, app icon | **Compiles and builds** (icon generation ran without warnings; the 14 check-rule tests pass). **Not yet run in the app:** the Check sheet UI, and the AI review, which calls Apple's Foundation Models API. |
-| Improve this macro, Draft steps with AI, Show Clicks, Play Macro menu, permission rescue buttons, stable local signing, auto-update, Install.command | **Written but not compiled or run.** Their core logic has unit tests that have not been executed. If the build fails, the first `error:` line says which file. |
+| Welcome screen, Set Up This Mac, release-based update, local re-signing | **Compiles. Not run.** Whether permissions survive an update after local re-signing is the design intent, not an observed result. |
+| Check macro, Improve, Draft with AI, AI review, Show Clicks, Play Macro menu, permission rescue buttons | **Compiles.** Core rules have unit tests. The interface and the AI calls (Apple's Foundation Models) have not been exercised in the running app by me. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):
