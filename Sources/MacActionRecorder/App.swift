@@ -71,6 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Makes `swift run` (no app bundle) behave like a normal windowed app as well.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // CI only: run the whole setup by itself (see SetupSelfTest).
+        if SetupSelfTest.startIfRequested() {
+            return
+        }
         SetupManager.shared.launchCheck(model: AppModel.shared)
         // Look for updates shortly after launch, then every few hours (if enabled in Settings).
         // Not before the Welcome screen has been closed: nothing is contacted until you have seen it.

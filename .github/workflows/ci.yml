@@ -246,6 +246,36 @@ jobs:
           cp "$RUNNER_TEMP/install-test/report.txt" mac-shots/install-selftest.txt
           exit $status
 
+      - name: Setup end-to-end (open from the disk image, install, reopen, tidy up)
+        run: |
+          set +e
+          mkdir -p mac-shots
+          export MAR_SIGNING_KEYCHAIN="$RUNNER_TEMP/selftest.keychain-db"
+          export MAR_SIGNING_KEYCHAIN_PASSWORD="selftest"
+          security unlock-keychain -p selftest "$MAR_SIGNING_KEYCHAIN"
+          rm -rf "/Applications/Mac Action Recorder.app" 2>/dev/null || sudo rm -rf "/Applications/Mac Action Recorder.app"
+          hdiutil attach dist/MacActionRecorder-macOS.dmg -quiet
+          report="$PWD/mac-shots/setup-e2e.txt"
+          rm -f "$report"
+          "/Volumes/Mac Action Recorder/Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" --selftest-setup "$report" > mac-shots/setup-e2e-first-copy.txt 2>&1 &
+          for i in $(seq 1 240); do
+            [ -f "$report" ] && break
+            sleep 1
+          done
+          sleep 2
+          {
+            echo "== report"; cat "$report"
+            echo "== volumes"; ls /Volumes
+            echo "== installed app"; codesign -d -r- "/Applications/Mac Action Recorder.app" 2>&1 | tail -1
+            echo "== running copies"; pgrep -fl MacActionRecorder
+          } > mac-shots/setup-e2e-summary.txt 2>&1
+          cat mac-shots/setup-e2e-summary.txt
+          pkill -f "Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" || true
+          grep -q "Phase: finished" "$report" \
+            && grep -q "Location: applications" "$report" \
+            && grep -q "certificate leaf" mac-shots/setup-e2e-summary.txt \
+            && ! ls /Volumes | grep -q "Mac Action Recorder"
+
       - name: Publish screenshots to the ci-screenshots-mac branch
         if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true

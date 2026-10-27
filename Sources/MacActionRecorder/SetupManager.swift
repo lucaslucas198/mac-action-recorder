@@ -102,6 +102,7 @@ final class SetupManager: ObservableObject {
                 defaults.removeObject(forKey: SetupManager.continuationKey)
                 defaults.removeObject(forKey: SetupManager.completedKey)
                 phase = .failed("The app in Applications could not be replaced with the prepared copy (" + InstallDoctor.selfPath + "). Quit the app, drag it from the disk image onto Applications yourself and choose Replace, then open it from Applications.")
+                SetupSelfTest.finishIfRunning(self)
                 return
             }
             continueAfterReopen()
@@ -320,6 +321,7 @@ final class SetupManager: ObservableObject {
         phase = .finished
         isDone = !InstallDoctor.needsSetup
         AppModel.shared.refreshPermissions()
+        SetupSelfTest.finishIfRunning(self)
     }
 
     // MARK: Step bookkeeping
@@ -343,6 +345,7 @@ final class SetupManager: ObservableObject {
         stopTicker()
         currentStep = nil
         phase = .failed(message)
+        SetupSelfTest.finishIfRunning(self)
     }
 
     private func startTicker() {
