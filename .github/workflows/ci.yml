@@ -34,12 +34,15 @@ jobs:
       - name: Run unit tests
         run: swift test
 
-  # Builds the Windows libraries and runs their tests on a real Windows machine, so the Win32 code
-  # (hooks, SendInput, hotkeys, DPI) is at least compiled and exercised by the tests where it matters.
+  # Builds the Windows app, runs the tests, and exercises it on a real Windows machine:
+  # a start-up check, a real keyboard-and-mouse record/replay self-test, and screenshots of every screen.
   windows-build-and-test:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write   # only used to publish screenshots to the ci-screenshots branch on pushes to main
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -54,6 +57,8 @@ jobs:
         run: |
           dotnet --info
           [System.Environment]::OSVersion | Format-List
+          Add-Type -AssemblyName System.Windows.Forms
+          [System.Windows.Forms.Screen]::AllScreens | Format-List DeviceName, Bounds, Primary
 
       - name: Build libraries and tests
         shell: pwsh
@@ -62,6 +67,95 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: dotnet windows/tests/ActionRecorder.Tests/bin/Release/net8.0/ActionRecorder.Tests.dll
+
+      - name: Publish the app
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.0.0-ci' }
+          $numeric = if ($version -match '^\d+\.\d+\.\d+') { $Matches[0] } else { '0.0.0' }
+          "AR_VERSION=$numeric" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          dotnet publish windows/src/ActionRecorder.App -c Release -r win-x64 --self-contained true `
+            -p:PublishReadyToRun=true -p:Version=$numeric -o windows/artifacts/publish
+          Get-ChildItem windows/artifacts/publish | Measure-Object -Property Length -Sum | ForEach-Object { "{0} files, {1:N1} MB" -f $_.Count, ($_.Sum / 1MB) }
+
+      - name: Start-up check (--smoke)
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'ar-smoke'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $env:ACTION_RECORDER_DATA = $data
+          $out = Join-Path $env:RUNNER_TEMP 'smoke.txt'
+          $p = Start-Process windows/artifacts/publish/ActionRecorder.exe -ArgumentList '--smoke','--out',$out -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Host "::error title=smoke::timed out" }
+          if (Test-Path $out) { Get-Content $out } else { Write-Host "::error title=smoke::no report written" }
+          if (Test-Path $out) { Get-Content $out | ForEach-Object { if ($_ -like 'FAIL*') { Write-Host "::error title=smoke::$_" } elseif ($_ -like 'PASS*') { Write-Host "::notice title=smoke::$_" } } }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Real input self-test (--selftest)
+        id: selftest
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'ar-selftest'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $env:ACTION_RECORDER_DATA = $data
+          $out = Join-Path $env:RUNNER_TEMP 'selftest.txt'
+          $p = Start-Process windows/artifacts/publish/ActionRecorder.exe -ArgumentList '--selftest','--out',$out -PassThru
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Host "::error title=selftest::timed out" }
+          if (Test-Path $out) { Get-Content $out } else { Write-Host "::error title=selftest::no report written" }
+          if (Test-Path $out) { Get-Content $out | ForEach-Object { if ($_ -like 'FAIL*') { Write-Host "::error title=selftest::$_" } elseif ($_ -like 'PASS*') { Write-Host "::notice title=selftest::$_" } } }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Screenshots of every screen (--screenshots)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP 'ar-shots'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $env:ACTION_RECORDER_DATA = $data
+          $dir = Join-Path $env:GITHUB_WORKSPACE 'windows/artifacts/screenshots'
+          $out = Join-Path $dir 'report.txt'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $p = Start-Process windows/artifacts/publish/ActionRecorder.exe -ArgumentList '--screenshots',$dir,'--out',$out -PassThru
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Host "::error title=screenshots::timed out" }
+          if (Test-Path $out) { Get-Content $out | ForEach-Object { if ($_ -like 'FAIL*') { Write-Host "::error title=screenshots::$_" } elseif ($_ -like 'PASS*') { Write-Host "::notice title=screenshots::$_" } } }
+          Get-ChildItem $dir | Format-Table Name, Length
+
+      - name: Publish screenshots to the ci-screenshots branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:GITHUB_WORKSPACE 'windows/artifacts/screenshots'
+          if (-not (Test-Path $src)) { exit 0 }
+          $work = Join-Path $env:RUNNER_TEMP 'shots-branch'
+          New-Item -ItemType Directory -Force $work | Out-Null
+          Copy-Item "$src/*" $work -Recurse -Force
+          Set-Location $work
+          git init -q -b ci-screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Windows UI screenshots from CI run ${{ github.run_id }} (${{ github.sha }})"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$env:AR_VERSION" windows/installer/ActionRecorder.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Compress-Archive -Path windows/artifacts/publish/* -DestinationPath windows/artifacts/ActionRecorder-Windows-Portable.zip
+          Get-ChildItem windows/artifacts -File | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ActionRecorder-Windows
+          path: |
+            windows/artifacts/ActionRecorder-Windows-Setup.exe
+            windows/artifacts/ActionRecorder-Windows-Portable.zip
+          if-no-files-found: error
 
   # Builds the app the way users download it: a .dmg to drag into Applications, plus a .zip that
   # the in-app updater uses. Runs on the newest runner so the AI features are compiled in.

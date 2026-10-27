@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>ActionRecorder</AssemblyName>
+    <RootNamespace>ActionRecorder.Desktop</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Product>Action Recorder</Product>
+    <Company>Action Recorder</Company>
+    <Description>Record and replay mouse and keyboard actions.</Description>
+    <!-- ThemeMode (the Windows 11 Fluent theme) is marked experimental in WPF; this app uses it on purpose. -->
+    <NoWarn>$(NoWarn);WPF0001;CA1416</NoWarn>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ActionRecorder.Core\ActionRecorder.Core.csproj" />
+    <ProjectReference Include="..\ActionRecorder.Native\ActionRecorder.Native.csproj" />
+    <ProjectReference Include="..\ActionRecorder.Model\ActionRecorder.Model.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
+</Project>

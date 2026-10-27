@@ -1,0 +1,20 @@
+<Application x:Class="ActionRecorder.Desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ActionRecorder.Desktop"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Styles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <local:InverseBoolToVisibility x:Key="InvBoolToVis"/>
+            <local:InverseBool x:Key="InvBool"/>
+            <local:HasValueToVisibility x:Key="HasValueToVis"/>
+            <local:EmptyToVisibility x:Key="EmptyToVis"/>
+            <local:FractionToWidth x:Key="FractionToWidth"/>
+            <local:NullToTrue x:Key="NullToTrue"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

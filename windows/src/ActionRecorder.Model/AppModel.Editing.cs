@@ -11,6 +11,11 @@ public sealed partial class AppModel
     private readonly List<Recording> _undo = new();
     private readonly List<Recording> _redo = new();
 
+    private RelayCommand? _undoCommand;
+    private RelayCommand? _redoCommand;
+    public RelayCommand UndoCommand => _undoCommand ??= new RelayCommand(Undo, () => CanUndo);
+    public RelayCommand RedoCommand => _redoCommand ??= new RelayCommand(Redo, () => CanRedo);
+
     public bool CanUndo => CanEdit && _undo.Count > 0;
     public bool CanRedo => CanEdit && _redo.Count > 0;
 

@@ -82,6 +82,23 @@ public sealed partial class AppModel : ObservableObject, IDisposable
 
     public string EmergencyStopText => _settings.EmergencyStop.DisplayString;
 
+    /// <summary>True when Windows accepted the emergency-stop shortcut (another program may already own it).</summary>
+    public bool EmergencyStopRegistered => _s.HotKey.IsRegistered;
+
+    /// <summary>One line about this PC for the About and Privacy pages, for example "Windows 11 (build 22631) · 2 monitors".</summary>
+    public string SystemSummary
+    {
+        get
+        {
+            var monitors = _s.Probe.MonitorCount;
+            var screen = _s.Probe.PrimaryScreen();
+            var parts = new List<string> { _s.Probe.WindowsDescription() };
+            if (screen != null) parts.Add($"{screen.Width:0}×{screen.Height:0}");
+            parts.Add(monitors == 1 ? "1 monitor" : $"{monitors} monitors");
+            return string.Join(" · ", parts);
+        }
+    }
+
     public string RecordingsFolder => _store.Directory;
 
     private static string ResolveSaveFolder(AppSettings s) =>
@@ -154,7 +171,10 @@ public sealed partial class AppModel : ObservableObject, IDisposable
             if (Set(ref _status, value))
             {
                 RaiseAll(nameof(StatusText), nameof(IsBusy), nameof(IsRecordingOrPreparing), nameof(CanRecord), nameof(CanPlay),
-                    nameof(CanPause), nameof(CanResume), nameof(CanStop), nameof(CanEdit), nameof(IsPlayingOrPaused));
+                    nameof(CanPause), nameof(CanResume), nameof(CanStop), nameof(CanEdit), nameof(IsPlayingOrPaused),
+                    nameof(CanUndo), nameof(CanRedo));
+                _undoCommand?.RaiseCanExecuteChanged();
+                _redoCommand?.RaiseCanExecuteChanged();
             }
         }
     }
@@ -279,6 +299,8 @@ public sealed partial class AppModel : ObservableObject, IDisposable
         RaiseAll(nameof(Current), nameof(CurrentName), nameof(ActionCount), nameof(DurationText), nameof(HasRecording),
             nameof(HasActions), nameof(TargetText), nameof(CanPlay), nameof(CanEdit), nameof(FromMac), nameof(EstimateText),
             nameof(CanUndo), nameof(CanRedo));
+        _undoCommand?.RaiseCanExecuteChanged();
+        _redoCommand?.RaiseCanExecuteChanged();
     }
 
     public void ReloadRecordings()
@@ -418,6 +440,30 @@ public sealed partial class AppModel : ObservableObject, IDisposable
             LoadCurrent(_selected?.Recording);
         }
         Show(NoticeKind.Info, $"Deleted “{entry.Name}”.");
+    }
+
+    /// <summary>Deletes every saved macro (used by "Delete all recordings" in Settings). Returns how many were removed.</summary>
+    public int DeleteAllRecordings()
+    {
+        if (IsBusy) return 0;
+        var removed = 0;
+        foreach (var entry in Recordings.ToList())
+        {
+            try
+            {
+                if (_store.Exists(entry.Id)) _store.Delete(entry.Id);
+                removed++;
+            }
+            catch (RecordingException ex)
+            {
+                Show(NoticeKind.Error, ex.Message);
+                break;
+            }
+        }
+        _dirty = false;
+        ReloadRecordings();
+        if (removed > 0) Show(NoticeKind.Info, $"Deleted {removed} macro{(removed == 1 ? "" : "s")}.");
+        return removed;
     }
 
     public void DuplicateRecording(RecordingEntry entry)
