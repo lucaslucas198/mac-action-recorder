@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ActionRecorder.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ActionRecorder.Core\ActionRecorder.Core.csproj" />
+    <ProjectReference Include="..\..\src\ActionRecorder.Native\ActionRecorder.Native.csproj" />
+    <ProjectReference Include="..\..\src\ActionRecorder.Model\ActionRecorder.Model.csproj" />
+  </ItemGroup>
+</Project>

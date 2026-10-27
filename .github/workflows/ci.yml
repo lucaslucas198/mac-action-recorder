@@ -34,6 +34,35 @@ jobs:
       - name: Run unit tests
         run: swift test
 
+  # Builds the Windows libraries and runs their tests on a real Windows machine, so the Win32 code
+  # (hooks, SendInput, hotkeys, DPI) is at least compiled and exercised by the tests where it matters.
+  windows-build-and-test:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Toolchain info
+        shell: pwsh
+        run: |
+          dotnet --info
+          [System.Environment]::OSVersion | Format-List
+
+      - name: Build libraries and tests
+        shell: pwsh
+        run: dotnet build windows/tests/ActionRecorder.Tests -c Release -warnaserror
+
+      - name: Run tests
+        shell: pwsh
+        run: dotnet windows/tests/ActionRecorder.Tests/bin/Release/net8.0/ActionRecorder.Tests.dll
+
   # Builds the app the way users download it: a .dmg to drag into Applications, plus a .zip that
   # the in-app updater uses. Runs on the newest runner so the AI features are compiled in.
   package:

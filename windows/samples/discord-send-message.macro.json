@@ -1,0 +1,19 @@
+{
+  "actions": [
+    { "delay": 0, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000001", "keyCode": 75, "kind": "key", "modifiers": ["control"] },
+    { "delay": 0, "duration": 0.4, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000002", "kind": "wait" },
+    { "delay": 0, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000003", "kind": "text", "text": "general" },
+    { "delay": 0, "duration": 0.6, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000004", "kind": "wait" },
+    { "delay": 0, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000005", "keyCode": 13, "kind": "key", "modifiers": [] },
+    { "delay": 0, "duration": 0.8, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000006", "kind": "wait" },
+    { "delay": 0, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000007", "kind": "text", "text": "Hello from Action Recorder" },
+    { "delay": 0.2, "id": "5B0F1E64-2D4C-4B7E-9A10-100000000008", "keyCode": 13, "kind": "key", "modifiers": [] }
+  ],
+  "createdAt": "2026-01-01T00:00:00Z",
+  "formatVersion": 1,
+  "id": "5B0F1E64-2D4C-4B7E-9A10-1000000000AA",
+  "modifiedAt": "2026-01-01T00:00:00Z",
+  "name": "Sample: open a channel and send a message (edit before use)",
+  "notes": "Keyboard-only sample using Discord's Quick Switcher (Ctrl+K). Replace 'general' and the message before playing. It contains no screen coordinates and no personal information.",
+  "platform": "windows"
+}

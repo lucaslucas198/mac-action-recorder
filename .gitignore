@@ -32,3 +32,9 @@ settings.json
 *.key
 .env
 .env.*
+
+# Windows (.NET) build output
+windows/**/bin/
+windows/**/obj/
+windows/artifacts/
+*.user
