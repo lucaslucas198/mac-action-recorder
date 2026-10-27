@@ -247,7 +247,8 @@ final class RecordingBuilderTests: XCTestCase {
         XCTAssertEqual(actions.count, 2)
         XCTAssertEqual(actions[0].scrollY, -15)
         XCTAssertEqual(actions[1].scrollY, 8)
-        XCTAssertEqual(actions[1].delay, 0.98, accuracy: 0.0001)
+        // A coalesced scroll is replayed as one event at its start, so the next one is timed from there.
+        XCTAssertEqual(actions[1].delay, 1.0, accuracy: 0.0001)
     }
 
     func testBuiltActionsPassValidation() {

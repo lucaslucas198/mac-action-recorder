@@ -161,7 +161,7 @@ public enum PlaybackTiming {
         }
     }
 
-        /// Longest single click hold that is replayed; longer recorded holds are shortened to this.
+    /// Longest single click hold that is replayed; longer recorded holds are shortened to this.
     public static let maxClickHold = 30.0
 
     /// How long to hold the button for this click at the configured speed, or nil to use the

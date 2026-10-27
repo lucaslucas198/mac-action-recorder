@@ -247,10 +247,10 @@ final class TimelineFidelityTests: XCTestCase {
             lock.lock()
             times.append(ProcessInfo.processInfo.systemUptime)
             lock.unlock()
-            if count == 1 { Thread.sleep(forTimeInterval: 0.1) }
+            if count == 1 { Thread.sleep(forTimeInterval: 0.14) }
         }
         let engine = PlaybackEngine(performer: performer, frontmostBundleID: { nil })
-        let actions: [MacroAction] = [.key(1), .key(2, delay: 0.3)]
+        let actions: [MacroAction] = [.key(1), .key(2, delay: 1.0)]
         XCTAssertNoThrow(try engine.start(recording: Recording(name: "t", actions: actions), config: PlaybackConfig()))
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
@@ -262,9 +262,10 @@ final class TimelineFidelityTests: XCTestCase {
         lock.unlock()
         XCTAssertEqual(seen.count, 2)
         guard seen.count == 2 else { return }
-        // On the timeline: 0.3 s after the first started, not 0.3 s after it finished (0.4 s).
-        XCTAssertLessThan(seen[1] - seen[0], 0.37)
-        XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.29)
+        // On the timeline: 1.0 s after the first started, not 1.0 s after it finished (1.14 s).
+        // The margin allows for a busy test machine waking the thread late.
+        XCTAssertLessThan(seen[1] - seen[0], 1.10)
+        XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.99)
     }
 
     func testPlannedSpanCoversHoldsAndTyping() {
@@ -276,5 +277,25 @@ final class TimelineFidelityTests: XCTestCase {
         XCTAssertEqual(PlaybackTiming.plannedSpan(of: click, config: config), 0.2, accuracy: 1e-9)
         XCTAssertEqual(PlaybackTiming.plannedSpan(of: text, config: config), 0.3, accuracy: 1e-9)
         XCTAssertEqual(PlaybackTiming.plannedSpan(of: .key(1), config: config), 0)
+    }
+
+    /// Rounding to milliseconds is done against the exact times, so it never adds up.
+    func testRoundingDoesNotAccumulateOverALongMacro() {
+        var events: [RawEvent] = []
+        var t = 0.0
+        for i in 0..<600 {
+            events.append(down(t, Double(i % 50), 10))
+            events.append(up(t + 0.0334, Double(i % 50), 10))
+            t += 0.2337 // every interval has a fraction of a millisecond
+        }
+        let actions = RecordingBuilder.build(events: events, options: RecordingOptions())
+        XCTAssertEqual(actions.count, 600)
+        var clock = 0.0
+        for action in actions.dropLast() {
+            clock += action.delay + (action.duration ?? 0)
+        }
+        clock += actions.last?.delay ?? 0
+        // The last click started at 599 * 0.2337 s.
+        XCTAssertEqual(clock, 599 * 0.2337, accuracy: 0.001)
     }
 }

@@ -112,9 +112,10 @@ public struct MoveThrottle {
 /// - mouse down + up at the same spot become one click (and double/triple clicks are merged)
 /// - consecutive typed characters become one text action
 /// - shortcuts and special keys become key actions (key-down + key-up = one press)
-/// - delays are the gaps between the end of one action and the start of the next
-/// - a click keeps how long the button was held, and text keeps how long it took to type, so
-///   playback can reproduce the recorded timeline
+/// - a click keeps how long the button was held, and text keeps how long it took to type
+/// - each delay is the gap between the end of the previous action and the start of the next on
+///   the recorded timeline (clicks and text end after their duration; everything else is instant),
+///   so playback can reproduce the recorded timeline
 public enum RecordingBuilder {
     /// A pause longer than this starts a new text action instead of extending the last one.
     public static let textRunGap = 2.0
@@ -164,14 +165,14 @@ public enum RecordingBuilder {
                        let lastPointX = last.x, let lastPointY = last.y,
                        hypot(lastPointX - event.x, lastPointY - event.y) <= clickSlop {
                         // Second (or third) click of a multi-click: upgrade the previous click.
-                        let position = assembler.actions.count - 1
-                        assembler.actions[position].clickCount = count
+                        assembler.actions[assembler.actions.count - 1].clickCount = count
                         assembler.extendLast(to: up.time)
-                        assembler.actions[position].duration = assembler.lastSpan
                     } else {
-                        var click = round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers)
-                        click.duration = roundMilliseconds(max(0, up.time - event.time))
-                        assembler.append(click, start: event.time, end: up.time)
+                        assembler.append(
+                            round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers),
+                            start: event.time,
+                            end: up.time
+                        )
                     }
                     lastX = up.x
                     lastY = up.y
@@ -227,11 +228,8 @@ public enum RecordingBuilder {
                         let position = assembler.actions.count - 1
                         assembler.actions[position].text = (last.text ?? "") + characters
                         assembler.extendLast(to: event.time)
-                        assembler.actions[position].duration = assembler.lastSpan
                     } else {
-                        var text = MacroAction.text(characters)
-                        text.duration = 0
-                        assembler.append(text, start: event.time, end: event.time)
+                        assembler.append(.text(characters), start: event.time, end: event.time)
                     }
                 } else {
                     guard options.recordShortcuts else { break }
@@ -283,31 +281,49 @@ public enum RecordingBuilder {
         return result
     }
 
+    /// Builds the action list on a timeline. Each action's `delay` is measured from where the
+    /// previous action ends on that timeline: a click or text ends after its `duration` (which the
+    /// assembler fills in), everything else is instant. Delays and durations are rounded to
+    /// milliseconds against the exact event times, so rounding never adds up over a long macro.
     private struct Assembler {
         var actions: [MacroAction] = []
+        /// Exact time of the last raw event taken into the last action (used to decide whether the
+        /// next event extends it, for example the next typed character).
         var lastEnd: Double?
-        var lastStart: Double?
+        private var origin: Double?
+        /// Start of the last action and end of the timeline so far, rounded, relative to `origin`.
+        private var lastTimelineStart = 0.0
+        private var timelineEnd = 0.0
 
-        /// Time from the start to the end of the last action, rounded to milliseconds.
-        var lastSpan: Double? {
-            guard let start = lastStart, let end = lastEnd else { return nil }
-            return RecordingBuilder.roundMilliseconds(max(0, end - start))
+        private static func hasDuration(_ kind: ActionKind) -> Bool {
+            return kind == .click || kind == .text
         }
 
         mutating func append(_ action: MacroAction, start: Double, end: Double) {
             var next = action
-            if let previousEnd = lastEnd {
-                next.delay = RecordingBuilder.roundMilliseconds(max(0, start - previousEnd))
+            if let base = origin {
+                next.delay = RecordingBuilder.roundMilliseconds(max(0, (start - base) - timelineEnd))
             } else {
+                origin = start
                 next.delay = 0
             }
+            lastTimelineStart = timelineEnd + next.delay
+            timelineEnd = lastTimelineStart
             actions.append(next)
-            lastStart = start
-            lastEnd = end
+            setLastEnd(end)
         }
 
         mutating func extendLast(to time: Double) {
+            setLastEnd(time)
+        }
+
+        private mutating func setLastEnd(_ time: Double) {
             lastEnd = time
+            guard let base = origin, let index = actions.indices.last,
+                  Assembler.hasDuration(actions[index].kind) else { return }
+            let duration = RecordingBuilder.roundMilliseconds(max(0, (time - base) - lastTimelineStart))
+            actions[index].duration = duration
+            timelineEnd = lastTimelineStart + duration
         }
     }
 }
