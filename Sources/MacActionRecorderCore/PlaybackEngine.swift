@@ -289,7 +289,7 @@ public final class PlaybackEngine {
             /// Sleeps until `target`. Time spent paused moves the timeline on; the amount is
             /// returned (nil if the run was cancelled).
             func sleep(until target: Double) -> Double? {
-                if !run.sleep(max(0, target - Run.now())) { return nil }
+                if !run.sleep(untilUptime: target) { return nil }
                 let paused = run.takePausedTime()
                 due += paused
                 return paused
@@ -445,7 +445,7 @@ public final class PlaybackEngine {
                     target = Run.now()
                 }
                 target = max(target, last + minimumGap)
-                if !run.sleep(max(0, target - Run.now())) { return false }
+                if !run.sleep(untilUptime: target) { return false }
                 let pausedNow = run.takePausedTime()
                 start += pausedNow
                 paused += pausedNow
@@ -551,6 +551,41 @@ public final class PlaybackEngine {
             let value = pausedTotal
             pausedTotal = 0
             return value
+        }
+
+        /// The last this-many seconds before a step are waited out with the system's precise
+        /// clock instead of an interruptible timed wait, which macOS may let run a little late.
+        static let preciseWindow = 0.015
+
+        /// Sleeps until the uptime `target`: an interruptible wait for most of it, then a precise
+        /// wait for the last few milliseconds (a stop or pause arriving then takes effect at most
+        /// that much later). Returns false if the run was cancelled.
+        func sleep(untilUptime target: Double) -> Bool {
+            let coarseEnd = target - Run.preciseWindow
+            if !sleep(max(0, coarseEnd - Run.now())) { return false }
+            let rest = target - Run.now()
+            if rest > 0 {
+                Run.preciseWait(seconds: min(rest, Run.preciseWindow))
+            }
+            return sleep(0)
+        }
+
+        /// Waits with the Mach clock, which macOS does not batch with other timers.
+        static func preciseWait(seconds: Double) {
+            guard seconds > 0 else { return }
+            #if canImport(Darwin)
+            var info = mach_timebase_info_data_t()
+            mach_timebase_info(&info)
+            guard info.numer > 0 else {
+                Thread.sleep(forTimeInterval: seconds)
+                return
+            }
+            let nanoseconds = UInt64(seconds * 1_000_000_000)
+            let ticks = nanoseconds * UInt64(info.denom) / UInt64(info.numer)
+            mach_wait_until(mach_absolute_time() + ticks)
+            #else
+            Thread.sleep(forTimeInterval: seconds)
+            #endif
         }
 
         /// Sleeps for `seconds` of un-paused time. Returns false if the run was cancelled.
