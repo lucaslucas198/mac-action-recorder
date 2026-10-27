@@ -32,6 +32,7 @@ Mac app (Windows unchanged). Focus: installing, one copy of the app, permissions
 **Layout**
 
 - Playback controls no longer clip at the smallest window size (repeat count and wait now have their own row).
+- Settings uses a sidebar (General, Recording, Playback, Safety, Discord, AI, Storage, Permissions & Privacy, Updates) instead of a tab bar that was too narrow for nine sections.
 - CI now draws every main screen to images on each push (`ci-screenshots-mac` branch), which is how these layout problems were found.
 
 **Verification**

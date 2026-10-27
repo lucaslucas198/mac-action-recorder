@@ -41,15 +41,24 @@ struct SettingsView: View {
 
     var body: some View {
         // A sidebar instead of a tab bar: nine sections do not fit side by side in a tab bar.
-        NavigationSplitView {
+        HStack(spacing: 0) {
             List(Pane.allCases, selection: $pane) { item in
                 Label(item.title, systemImage: item.symbol)
+                    .padding(.vertical, 2)
                     .tag(item)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
-        } detail: {
-            detail(pane ?? .general)
-                .navigationTitle((pane ?? .general).title)
+            .listStyle(.sidebar)
+            .frame(width: 210)
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                Text((pane ?? .general).title)
+                    .font(.title2.weight(.semibold))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 4)
+                detail(pane ?? .general)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 780, minHeight: 560)
     }
