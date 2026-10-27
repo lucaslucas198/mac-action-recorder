@@ -350,12 +350,12 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0" Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Actions" Style="{StaticResource HeadingText}" VerticalAlignment="Center" Margin="2,0,12,0"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Actions" Style="{StaticResource HeadingText}" VerticalAlignment="Center" Margin="2,0,0,6"/>
+                                <WrapPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Left">
                                     <Button Style="{StaticResource IconButton}" Content="&#xE7A7;" ToolTip="Undo (Ctrl+Z)" Command="{Binding UndoCommand}"/>
                                     <Button Style="{StaticResource IconButton}" Content="&#xE7A6;" ToolTip="Redo (Ctrl+Y)" Command="{Binding RedoCommand}"/>
                                     <Border Width="1" Background="{DynamicResource LineBrush}" Margin="6,6"/>
@@ -369,7 +369,7 @@
                                     <Border Width="1" Background="{DynamicResource LineBrush}" Margin="6,6"/>
                                     <Button Style="{StaticResource IconButton}" Content="&#xE890;" ToolTip="Show where the clicks will land" Click="OnShowClicks" IsEnabled="{Binding HasActions}"/>
                                     <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Play only the selected actions" Click="OnPlaySelection" IsEnabled="{Binding CanPlay}"/>
-                                </StackPanel>
+                                </WrapPanel>
                             </Grid>
 
                             <Grid Grid.Row="1">

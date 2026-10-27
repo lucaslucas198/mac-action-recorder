@@ -1,6 +1,8 @@
 # Mac Action Recorder
 
-**Install:** download `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest), drag the app onto Applications, and follow the Welcome screen. Detailed steps: [Install on a Mac](#install-on-a-mac-no-xcode-needed).
+**Install on a Mac:** download `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest), drag the app onto Applications, and follow the Welcome screen. Detailed steps: [Install on a Mac](#install-on-a-mac-no-xcode-needed).
+
+**Install on Windows:** download `ActionRecorder-Windows-Setup.exe` from the same page and run it. Details and the SmartScreen warning: [Windows version](#windows-version).
 
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
@@ -24,6 +26,59 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 - **Auto-update** from this repository's GitHub Releases (see [Updates](#updates)): the app notices a newer version, downloads the finished app in the background, and installs it when you click Restart to Update.
 - **Play Macro** submenu in the menu bar for starting a saved macro without opening the window.
 - **Discord presets** (optional): keyboard-only building blocks that use Discord's Quick Switcher (`⌘K`). The app contains **no hardcoded screen coordinates**.
+
+## Windows version
+
+The same recorder for Windows 10 (1809+) and Windows 11, 64-bit. It lives in [`windows/`](windows/) and is a separate app (C# / WPF, .NET 10, self-contained: nothing else to install). It has the same features as the Mac app: recording, playback with speed / repeat / loop / countdown, pause / resume / restart / emergency stop (default `Ctrl+Alt+Shift+S`), the action editor with undo and redo, the **Check** panel, the optional **AI helper**, Show Clicks, Discord keyboard presets, settings, import / export, backups, and updates from GitHub Releases. The Mac and Windows apps read the same recording format; see [Moving macros between Mac and Windows](#moving-macros-between-mac-and-windows).
+
+> [!CAUTION]
+> **Windows SmartScreen will warn you the first time.** It says *"Windows protected your PC"* because the installer is not code-signed (a signing certificate costs money and none is used here). Click **More info**, then **Run anyway**. The release has `SHA256SUMS.txt` so you can compare the file's hash first: `Get-FileHash .\ActionRecorder-Windows-Setup.exe` in PowerShell.
+
+**Install:** run `ActionRecorder-Windows-Setup.exe`. It installs for your user only (no administrator prompt) and adds a Start menu entry. `ActionRecorder-Windows-Portable.zip` is the same app without an installer: unzip anywhere and run `ActionRecorder.exe`.
+
+**Permissions:** Windows has no permission prompts for recording or sending input. One limit: Windows blocks a normal app from seeing or sending input to a window that is running **as administrator** (this is called UIPI). If recording or playback does nothing in such a window, start Action Recorder as administrator too. The app warns when it detects this.
+
+**AI helper (optional):** install [Ollama](https://ollama.com), then in the app open the AI helper tab and press **Download model** (the recommended model is `llama3.2:3b`). The app only talks to Ollama on this computer (`127.0.0.1`), never to the internet. Whatever the model writes goes through strict parsers; it can only propose deleting or pausing steps, or adding keyboard steps, and nothing changes until you tick it. The AI can be wrong; always read what it proposes. Without Ollama the app works fully; only the AI buttons are disabled.
+
+**Windows-specific limitations (honest list):**
+
+- Coordinates are screen pixels: if a window moves, the display scale or resolution changes, or the app's layout changes, clicks land in the wrong place. The Check panel and **Show Clicks** help; test at a slow speed first.
+- Text is replayed as Unicode characters, which should work across keyboard layouts. Dead-key and IME input (typing accents or East Asian text by combining keys) has **not been tested** and may not record or replay faithfully.
+- Secure desktops (the sign-in screen, the UAC prompt) cannot be recorded or controlled by any normal app.
+- Some games and anti-cheat protected programs ignore or block simulated input. This app does not try to get around that.
+- Reordering actions uses the up / down buttons (no drag and drop yet).
+- Discord can rate-limit or restrict accounts that send many messages quickly. The Check panel warns about this; keep delays between repeats.
+
+**Build it yourself (needs Windows and the .NET 10 SDK):**
+
+```powershell
+git clone https://github.com/lucaslucas198/mac-action-recorder.git
+cd mac-action-recorder\windows
+$env:DOTNET_ROLL_FORWARD = "Major"                                # the tests target .NET 8; lets them run on a .NET 10-only machine
+dotnet run --project tests\ActionRecorder.Tests -c Release       # unit tests
+dotnet run --project src\ActionRecorder.App -c Release            # start the app
+```
+
+To build the installer, publish with `dotnet publish src\ActionRecorder.App -c Release -r win-x64 --self-contained -o artifacts\publish` and compile `installer\ActionRecorder.iss` with Inno Setup.
+
+### Moving macros between Mac and Windows
+
+Files carry a `platform` field. Opening a Mac recording on Windows converts it: Command becomes Ctrl and Mac key codes are translated to Windows ones (keys with no Windows equivalent are reported, not guessed); the target app is cleared (the foreground check then needs a new recording). Keyboard-only macros convert best. Mouse positions are copied as they are and almost certainly need adjusting for a different screen. Check the result before playing it.
+
+### Windows verification status
+
+What the GitHub Actions run on a `windows-latest` runner (Windows Server image, 1024×768 virtual display, running as administrator) actually did for the commit that added this section:
+
+| Item | Status |
+| --- | --- |
+| App compiles | **Verified** by CI (.NET 10, WPF). |
+| Unit tests | **Verified**: the custom test program passed on the runner (engine, file format, editing, storage, settings, update logic, AI reply parsers, and the app model with fake input and fake Ollama / GitHub responses). |
+| App starts, every screen and all 8 settings pages open, no data-binding errors | **Verified** by CI (`--smoke`). |
+| Real recording and playback | **Verified in a narrow case** by CI (`--selftest`): the app opened a test window, recorded real injected mouse and keyboard input through the Windows hooks, replayed it with `SendInput`, and the test window received the click and the typed text; the emergency-stop hotkey fired from real key input. This ran on a CI machine, not on a person's PC, and **not in Discord**. |
+| Look of the interface | Rendered screenshots from CI were reviewed; they are not a substitute for using it on your screen. |
+| Installer | **Built** by CI. **Not yet installed or run on a real PC by the author.** The silent update path (download, checksum check, run installer, relaunch) has unit tests with fake downloads but has **not been run end to end** against a real release. |
+| AI helper with a real Ollama | The client and the parsers are tested with fake replies. **Not tested against a real running Ollama or real model output.** |
+| Display scaling above 100%, several monitors, Discord | **Not tested.** |
 
 ## Install on a Mac (no Xcode needed)
 

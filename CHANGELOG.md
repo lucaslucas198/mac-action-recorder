@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.4.0
+
+- **Windows version** (new, in `windows/`): a native WPF app for Windows 10 1809+ and Windows 11 (64-bit) with the same features as the Mac app: recording, playback and speed/repeat/loop/countdown, pause/resume/restart/emergency stop, the action editor with undo and redo, the Check panel, the optional local AI helper (Ollama on this PC only), Show Clicks, Discord keyboard presets, settings, import/export and backups, and update checks against GitHub Releases (checksum verified before the installer runs).
+- Releases now also contain `ActionRecorder-Windows-Setup.exe` and `ActionRecorder-Windows-Portable.zip`, and one `SHA256SUMS.txt` covers the Mac and Windows files. The Windows installer is not code-signed, so SmartScreen warns; the release notes say how to continue.
+- Mac recordings can be opened on Windows (Command is converted to Ctrl); Windows recordings carry `"platform":"windows"`.
+- CI builds, tests, starts and screenshots the Windows app on a Windows runner and runs a real input record/replay self-test.
+- The Mac app itself is unchanged in this version.
+
 ## 0.3.2
 
 - Welcome flow is now two pages: a home page with the big logo and a **Get Started** button, then the setup page ending in **Enter**. After "Set Up This Mac" reopens the app it starts on the setup page.

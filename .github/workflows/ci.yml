@@ -216,7 +216,7 @@ jobs:
     # The app is ad-hoc signed and NOT notarized (no Apple Developer credentials are used here).
     # See README > "Code signing and notarization".
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package
+    needs: [package, windows-build-and-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -232,10 +232,16 @@ jobs:
           name: MacActionRecorder-macOS
           path: dist
 
-      - name: Checksums
+      - uses: actions/download-artifact@v4
+        with:
+          name: ActionRecorder-Windows
+          path: dist
+
+      - name: Checksums (one list for the Mac and Windows files)
         run: |
           cd dist
-          sha256sum MacActionRecorder-macOS.dmg MacActionRecorder-macOS.zip | tee SHA256SUMS.txt
+          ls -la
+          sha256sum MacActionRecorder-macOS.dmg MacActionRecorder-macOS.zip ActionRecorder-Windows-Setup.exe ActionRecorder-Windows-Portable.zip | tee SHA256SUMS.txt
 
       - name: VirusTotal scan (only if the VT_API_KEY secret is set)
         if: env.VT_API_KEY != ''
@@ -247,7 +253,12 @@ jobs:
             echo '> [!CAUTION]'
             echo '> **macOS will block the app the first time you open it.** It will say "Apple could not verify Mac Action Recorder is free of malware". This is expected: the app is not notarized by Apple. Click **Done** (not Move to Trash), then open **System Settings > Privacy & Security** and click **Open Anyway**. Or run `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"` in Terminal.'
             echo
-            echo '**Install:** under *Assets* below, download **`MacActionRecorder-macOS.dmg`**, open it, and drag *Mac Action Recorder* onto *Applications*. Do not download "Source code (zip)": that is the program'"'"'s source files, not the app.'
+            echo '> [!CAUTION]'
+            echo '> **Windows SmartScreen will warn you the first time you run the installer.** It will say "Windows protected your PC" because the installer is not code-signed (a certificate costs money). This is expected. Click **More info**, then **Run anyway**. You can compare the file with `SHA256SUMS.txt` first.'
+            echo
+            echo '**Install on a Mac:** under *Assets* below, download **`MacActionRecorder-macOS.dmg`**, open it, and drag *Mac Action Recorder* onto *Applications*. Do not download "Source code (zip)": that is the program'"'"'s source files, not the app.'
+            echo
+            echo '**Install on Windows 10/11 (64-bit):** download **`ActionRecorder-Windows-Setup.exe`** and run it. It installs for your user only and needs no administrator rights. `ActionRecorder-Windows-Portable.zip` is the same app without an installer.'
             echo
             echo "Step-by-step instructions are in the [README](https://github.com/${GITHUB_REPOSITORY}#install-on-a-mac-no-xcode-needed). \`MacActionRecorder-macOS.zip\` is the same app, used by the in-app updater."
             echo
@@ -255,7 +266,7 @@ jobs:
               cat vt_result.md
               echo
             else
-              echo "No VirusTotal scan was run for this release. See the README section \"Is it safe?\" for how to check the file yourself."
+              echo "No VirusTotal scan was run for this release. See the README section \"Is it safe?\" for how to check the files yourself."
               echo
             fi
             echo "Checksums are in \`SHA256SUMS.txt\`."
@@ -267,6 +278,8 @@ jobs:
           files: |
             dist/MacActionRecorder-macOS.dmg
             dist/MacActionRecorder-macOS.zip
+            dist/ActionRecorder-Windows-Setup.exe
+            dist/ActionRecorder-Windows-Portable.zip
             dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
           generate_release_notes: true
