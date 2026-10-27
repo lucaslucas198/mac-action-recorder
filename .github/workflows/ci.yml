@@ -246,6 +246,24 @@ jobs:
           cp "$RUNNER_TEMP/install-test/report.txt" mac-shots/install-selftest.txt
           exit $status
 
+      - name: Record and replay real input in TextEdit
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p mac-shots
+          "build/Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" --selftest-input "$RUNNER_TEMP/input-test" > mac-shots/input-selftest-output.txt 2>&1 &
+          pid=$!
+          for i in $(seq 1 150); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          kill "$pid" 2>/dev/null
+          wait "$pid"
+          status=$?
+          echo "Exit status: $status" >> mac-shots/input-selftest-output.txt
+          cat mac-shots/input-selftest-output.txt
+          exit $status
+
       - name: Setup end-to-end (open from the disk image, install, reopen, tidy up)
         run: |
           set +e

@@ -38,6 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FileHandle.standardOutput.write(("Mac Action Recorder " + version + "\n").data(using: .utf8) ?? Data())
             exit(0)
         }
+        // CI only: record and replay real input in TextEdit and quit (see InputSelfTest).
+        if let folder = InputSelfTest.requestedFolder {
+            DispatchQueue.global(qos: .userInitiated).async { InputSelfTest.run(in: folder) }
+            return
+        }
         // CI only: test the install machinery and quit (see InstallSelfTest).
         if let folder = InstallSelfTest.requestedFolder {
             DispatchQueue.global(qos: .userInitiated).async { InstallSelfTest.run(in: folder) }
