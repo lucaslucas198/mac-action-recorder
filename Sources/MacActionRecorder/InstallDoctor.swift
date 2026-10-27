@@ -79,7 +79,7 @@ enum InstallDoctor {
     /// brought to the front and this copy quits (returns true). If this copy should stay, the
     /// others are asked to quit.
     @discardableResult
-    static func resolveDuplicateInstancesAtLaunch() -> Bool {
+    static func resolveDuplicateInstancesAtLaunch(beforeQuitting: (() -> Void)? = nil) -> Bool {
         guard isAppBundle else { return false }
         let others = otherInstances()
         guard !others.isEmpty else { return false }
@@ -92,6 +92,7 @@ enum InstallDoctor {
             if !Installation.shouldKeepSelf(me, over: describe(other), home: home) {
                 quittingAsDuplicate = true
                 Platform.activate(other)
+                beforeQuitting?()
                 NSApp.terminate(nil)
                 return true
             }

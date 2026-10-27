@@ -50,12 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // Only one copy of the app may run. If another one should stay, this copy quits here.
-        let quitting = InstallDoctor.resolveDuplicateInstancesAtLaunch()
-        // CI only: report what the one-copy check decided, then stay open briefly.
+        // CI only (--selftest-instance <file>): writes what the one-copy check decided.
+        var reportFile: URL?
         if let index = CommandLine.arguments.firstIndex(of: "--selftest-instance"), index + 1 < CommandLine.arguments.count {
-            let file = URL(fileURLWithPath: CommandLine.arguments[index + 1])
-            try? (quitting ? "quit" : "stayed").write(to: file, atomically: true, encoding: .utf8)
+            reportFile = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+        }
+        let quitting = InstallDoctor.resolveDuplicateInstancesAtLaunch(beforeQuitting: {
+            if let file = reportFile { try? "quit".write(to: file, atomically: true, encoding: .utf8) }
+        })
+        if let file = reportFile {
             if !quitting {
+                try? "stayed".write(to: file, atomically: true, encoding: .utf8)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 20) { exit(0) }
             }
             return
