@@ -51,6 +51,16 @@ struct WelcomeView: View {
                 page = .setup
             }
         }
+        .onChange(of: setup.phase) { phase in
+            // After an update finished by itself, with permissions still working, there is nothing
+            // to do here: go straight back to the macros.
+            if phase == .finished && model.settings.hasCompletedWelcome
+                && model.inputMonitoringGranted && model.accessibilityGranted {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if setup.phase == .finished && model.showingWelcome { enter() }
+                }
+            }
+        }
         .onChange(of: model.welcomeStartsOnSetup) { onSetup in
             if onSetup {
                 withAnimation(.spring(response: 0.55, dampingFraction: 0.88)) { page = .setup }

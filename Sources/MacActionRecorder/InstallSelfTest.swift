@@ -112,6 +112,15 @@ enum InstallSelfTest {
         check(!fm.fileExists(atPath: staged.path), "the staged copy was removed")
         check(!fm.fileExists(atPath: dest.path + ".new"), "no half-finished copy was left behind")
 
+        // The installed, locally signed copy must start. Run its program directly so the
+        // system's code-signature checks apply, and ask it only to print its version.
+        let launched = InstallDoctor.run(dest.path + "/Contents/MacOS/MacActionRecorder", ["--print-version"], timeout: 60)
+        let printed = launched.output.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        log("Signed copy said: " + printed.trimmingCharacters(in: .whitespacesAndNewlines) + " (status \(launched.status))")
+        check(launched.status == 0 && printed.contains("Mac Action Recorder"), "the locally signed copy starts")
+        let verify = InstallDoctor.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", dest.path])
+        check(verify.status == 0, "codesign --verify accepts the locally signed copy")
+
         // 4. Reopen helper waits too.
         let sleeper2 = Process()
         sleeper2.executableURL = URL(fileURLWithPath: "/bin/sleep")

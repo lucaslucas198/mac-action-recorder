@@ -32,6 +32,12 @@ struct MacActionRecorderApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Used by the install self-test: proves this copy starts, then quits at once.
+        if CommandLine.arguments.contains("--print-version") {
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+            FileHandle.standardOutput.write(("Mac Action Recorder " + version + "\n").data(using: .utf8) ?? Data())
+            exit(0)
+        }
         // CI only: test the install machinery and quit (see InstallSelfTest).
         if let folder = InstallSelfTest.requestedFolder {
             DispatchQueue.global(qos: .userInitiated).async { InstallSelfTest.run(in: folder) }
