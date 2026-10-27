@@ -170,7 +170,9 @@ public final class PlaybackEngine {
             self?.execute(run: run, actions: slice, firstIndex: lower, config: effective)
         }
         thread.name = "MacActionRecorder.Playback"
-        thread.qualityOfService = .userInitiated
+        // The highest priority keeps macOS from batching this thread's timers, which would make
+        // every wait a little late.
+        thread.qualityOfService = .userInteractive
         thread.start()
     }
 
@@ -317,7 +319,7 @@ public final class PlaybackEngine {
                     var pausedWhileTyping = 0.0
                     do {
                         if action.kind == .text {
-                            if !(try typeOut(action: action, run: run, config: config, paused: &pausedWhileTyping)) { return }
+                            if !(try typeOut(action: action, run: run, config: config, plannedStart: due, paused: &pausedWhileTyping)) { return }
                         } else if action.kind == .click {
                             if !(try performClick(action, run: run, config: config)) { return }
                         } else {
@@ -400,16 +402,25 @@ public final class PlaybackEngine {
         return true
     }
 
-    /// Types text one character at a time. Each character is scheduled from the start of the
-    /// text, so a late wake-up is not added to every following character. Time spent paused is
-    /// added to `paused`. Returns false if playback was cancelled part-way.
-    private func typeOut(action: MacroAction, run: Run, config: PlaybackConfig, paused: inout Double) throws -> Bool {
+    /// Types text one character at a time. Each character is scheduled from the text's planned
+    /// start on the timeline, so a late start or a late wake-up is made up over the following
+    /// characters (never faster than `minTypingCharDelay`) instead of adding up. Time spent paused
+    /// is added to `paused`. Returns false if playback was cancelled part-way.
+    private func typeOut(action: MacroAction, run: Run, config: PlaybackConfig, plannedStart: Double, paused: inout Double) throws -> Bool {
         let characters = Array(action.text ?? "")
         let gap = PlaybackTiming.typingDelay(for: action, config: config)
-        var start = Run.now()
+        let minimumGap = max(0, config.minTypingCharDelay)
+        var start = plannedStart
+        var last = Run.now()
         for (offset, character) in characters.enumerated() {
             if offset > 0 {
-                let target = start + Double(offset) * gap
+                var target = start + Double(offset) * gap
+                if Run.now() - target > PlaybackEngine.maxLag {
+                    // Far behind: carry on from here at the normal pace instead of rushing.
+                    start = Run.now() - Double(offset) * gap
+                    target = Run.now()
+                }
+                target = max(target, last + minimumGap)
                 if !run.sleep(max(0, target - Run.now())) { return false }
                 let pausedNow = run.takePausedTime()
                 start += pausedNow
@@ -418,6 +429,7 @@ public final class PlaybackEngine {
                 return false
             }
             try performer.perform(MacroAction.text(String(character)))
+            last = Run.now()
         }
         return true
     }

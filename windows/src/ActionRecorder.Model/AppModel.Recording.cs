@@ -107,14 +107,15 @@ public sealed partial class AppModel
             return;
         }
 
-        RecordingElapsed = 0;
-        RecordedEventCount = 0;
-        StatusDetail = "";
-        Status = AppStatus.Recording;
+        // Warn before the status changes, so anything waiting for "Recording" already sees it.
         if (_s.Probe.ForegroundIsMoreElevated())
         {
             Show(NoticeKind.Warning, "The program in front runs as administrator, so Windows hides its keys and clicks from recording. Start Action Recorder as administrator to record it.");
         }
+        RecordingElapsed = 0;
+        RecordedEventCount = 0;
+        StatusDetail = "";
+        Status = AppStatus.Recording;
 
         // Keep the on-screen timer and counter fresh while recording.
         var ui = _s.Ui;

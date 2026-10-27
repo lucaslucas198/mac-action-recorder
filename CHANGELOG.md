@@ -10,7 +10,7 @@ Mac app (Windows unchanged). Focus: installing, one copy of the app, permissions
 
 - Only one copy runs at a time. If you open a second one, the newer version (or, for the same version, the one in Applications) stays and the other quits.
 - **Quit and Reopen** now waits until the app has really quit and then opens the copy in Applications. Before, it could start a second copy, or an old copy from a disk image that was still open.
-- Old Mac Action Recorder disk images that are still open are ejected, and other copies of the app (for example in Downloads) are moved to the **Trash**, not deleted. This runs during setup and quietly at each launch, and a note says what was done.
+- Old Mac Action Recorder disk images that are still open are ejected, and other copies of the app are moved to the **Trash**, not deleted. Setup looks in Applications, Downloads and on the Desktop and asks Spotlight (macOS may ask once whether the app may look in Downloads or Desktop); at each later launch it quietly checks Applications and Spotlight. A note says what was done.
 
 **Installing**
 
@@ -25,8 +25,17 @@ Mac app (Windows unchanged). Focus: installing, one copy of the app, permissions
 - When the app's signature changed and the permissions stopped working, the old entries are removed from the Input Monitoring and Accessibility lists automatically (they looked switched on but did nothing, and blocked adding the app again). The first launch of 0.6.0 does this once if the permissions are not working.
 - The permission step has numbered instructions, an **Open … Settings** button for each list, live checkmarks, **Check Again**, **Quit and Reopen** and **Repair…**. The orange bar in the main window has **Fix Permissions…**.
 
+**Timing (replays on the recorded timeline)**
+
+- Clicks now keep how long the button was held, and typed text keeps how long it took to type. Playback holds each click and types each text at that pace (divided by the speed). Before, every click was a 10 ms tap and text was typed at a fixed rate, which shifted everything after it. Settings > Playback > *Match the recording* switches either off.
+- Every action, not only mouse movement, is scheduled against the recorded timeline, so a late wake-up or a slow step is made up in the next gap instead of adding up over a long macro. A pause moves the timeline on; falling more than 0.15 s behind restarts it rather than rushing.
+- Holding a click for longer than 0.25 s plays as press, wait, release, so Stop works during a long press.
+- Deleting a click or text keeps the actions after it at the same time.
+- Measured by CI on a macOS 26 virtual machine (recording and replaying a click and a word in TextEdit): see README > Verification status for the numbers.
+
 **On-device AI**
 
+- Reviews, Discord tips and stop explanations appear word by word as the model writes them, instead of all at once at the end.
 - The model is loaded ahead of time when the Check sheet opens, answers use a low temperature so the strict reply formats are followed more often, and prompts are kept short. Every AI action shows *Thinking… N s* with a **Stop** button, and a request that takes longer than 60 seconds is stopped with a clear message instead of spinning forever. (Not measured: how much faster answers are on a real Mac.)
 
 **Layout**
