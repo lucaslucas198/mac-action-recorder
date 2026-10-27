@@ -389,8 +389,18 @@ jobs:
             echo
             echo '**Install on Windows 10/11 (64-bit):** download **`ActionRecorder-Windows-Setup.exe`** and run it. It installs for your user only and needs no administrator rights. `ActionRecorder-Windows-Portable.zip` is the same app without an installer.'
             echo
+            echo '**Updating a Mac that already has the app:** either click **Restart to Update** in the app, or download the `.dmg`, drag the app onto *Applications* and choose **Replace**, then open it from Applications. It finishes its own setup and keeps the permissions you already switched on. (Coming from a copy that was never set up by the app itself, macOS needs the two permissions switched on one more time; after that they stay.)'
+            echo
             echo "Step-by-step instructions are in the [README](https://github.com/${GITHUB_REPOSITORY}#install-on-a-mac-no-xcode-needed). \`MacActionRecorder-macOS.zip\` is the same app, used by the in-app updater."
             echo
+            # What's new: this version's section of CHANGELOG.md.
+            version="${GITHUB_REF_NAME#v}"
+            awk -v head="## $version" '$0 == head { found = 1; next } /^## / { if (found) exit } found' CHANGELOG.md > changes.md
+            if [ -s changes.md ]; then
+              echo "## What's new in $version"
+              cat changes.md
+              echo
+            fi
             if [ -f vt_result.md ]; then
               cat vt_result.md
               echo

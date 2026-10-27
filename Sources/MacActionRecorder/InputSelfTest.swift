@@ -154,7 +154,8 @@ enum InputSelfTest {
         for speed in [1.0, 2.0] {
             Platform.onMain { Platform.activate(app) }
             Thread.sleep(forTimeInterval: 0.8)
-            let engine = PlaybackEngine(performer: MacEventPerformer(), frontmostBundleID: { Platform.bundleIDOfFrontmostApp() })
+            let timing = TimingPerformer(MacEventPerformer())
+            let engine = PlaybackEngine(performer: timing, frontmostBundleID: { Platform.bundleIDOfFrontmostApp() })
             var config = PlaybackConfig()
             config.speed = speed
             config.requiredBundleID = "com.apple.TextEdit"
@@ -180,6 +181,19 @@ enum InputSelfTest {
             Thread.sleep(forTimeInterval: 0.3)
             let seen = probe.stop()
             measurePlayback(seen: seen, actions: actions, speed: speed)
+            // When the engine handed each step to macOS, to tell the app's timing apart from how
+            // long the system took to pass the event on.
+            let handed = timing.entries
+            if let click = handed.first(where: { $0.kind == .click || $0.kind == .mouseDown }),
+               let letter = handed.first(where: { $0.kind == .text }),
+               let enter = handed.last(where: { $0.kind == .key }),
+               let press = seen.first(where: { $0.type == .leftMouseDown }) {
+                let firstKey = seen.first { $0.type == .keyDown && $0.time > press.time }
+                log(String(format: "  handed to macOS: click step %+.4f s, first letter %+.4f s, Return %+.4f s (from the click step); the system passed the press on %.1f ms and the first letter %.1f ms after handing over",
+                           0.0, letter.start - click.start, enter.start - click.start,
+                           (press.time - click.start) * 1000,
+                           ((firstKey?.time ?? letter.start) - letter.start) * 1000))
+            }
             Thread.sleep(forTimeInterval: 0.3)
         }
 
@@ -338,5 +352,39 @@ final class PlaybackProbe {
         lock.lock()
         defer { lock.unlock() }
         return seen
+    }
+}
+
+/// Passes every step to the real performer and notes when it was handed over. Self-test only.
+final class TimingPerformer: ActionPerformer {
+    struct Entry {
+        let kind: ActionKind
+        let start: Double
+    }
+
+    private let inner: ActionPerformer
+    private let lock = NSLock()
+    private var log: [Entry] = []
+
+    init(_ inner: ActionPerformer) {
+        self.inner = inner
+    }
+
+    func perform(_ action: MacroAction) throws {
+        let start = ProcessInfo.processInfo.systemUptime
+        lock.lock()
+        log.append(Entry(kind: action.kind, start: start))
+        lock.unlock()
+        try inner.perform(action)
+    }
+
+    func cleanup() {
+        inner.cleanup()
+    }
+
+    var entries: [Entry] {
+        lock.lock()
+        defer { lock.unlock() }
+        return log
     }
 }

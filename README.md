@@ -109,7 +109,7 @@ You download one file, drag one app, and the app's Welcome screen does the rest.
 
 Opening the app from the disk image directly also works: setup then copies it into Applications for you.
 
-**Installing a new version by hand** (instead of the built-in updater): repeat steps 1 to 4 and choose **Replace**. When the new copy opens it finishes its own setup (signing it with the same certificate as before), so the permissions you already switched on keep working, and the setup screen closes by itself.
+**Installing a new version by hand** (instead of the built-in updater): repeat steps 1 to 4 and choose **Replace**. When the new copy opens it finishes its own setup (signing it with the same certificate as before), so the permissions you already switched on keep working, and the setup screen closes by itself. If the copy you had before was never set up by the app itself (no *Mac Action Recorder Local Signing* certificate yet), macOS needs the two permissions switched on one more time; after that they stay.
 
 **Why one copy matters.** macOS ties the Input Monitoring and Accessibility switches to one copy of the app and its signature. Old disk images left open, or a second copy in Downloads, made macOS open the wrong copy, and each download had a different signature, so the switches stopped working. Since 0.6.0 the app keeps exactly one copy, the one in Applications, and signs it the same way every time.
 
