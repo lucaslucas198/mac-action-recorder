@@ -221,20 +221,22 @@ jobs:
 
       - name: Install self-test (disk image ejecting, local signing, swap and reopen helpers)
         run: |
+          set +e
+          mkdir -p mac-shots
           hdiutil attach dist/MacActionRecorder-macOS.dmg -quiet
-          echo "Volumes before:"; ls /Volumes
-          "build/Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" --selftest-install "$RUNNER_TEMP/install-test" &
+          { echo "Volumes before:"; ls /Volumes; } | tee mac-shots/install-selftest-output.txt
+          "build/Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" --selftest-install "$RUNNER_TEMP/install-test" >> mac-shots/install-selftest-output.txt 2>&1 &
           pid=$!
           for i in $(seq 1 300); do
             kill -0 "$pid" 2>/dev/null || break
             sleep 1
           done
-          kill "$pid" 2>/dev/null || true
-          wait "$pid"; status=$?
-          echo "Volumes after:"; ls /Volumes
-          cat "$RUNNER_TEMP/install-test/report.txt" || true
-          mkdir -p mac-shots
-          cp "$RUNNER_TEMP/install-test/report.txt" mac-shots/install-selftest.txt || true
+          kill "$pid" 2>/dev/null
+          wait "$pid"
+          status=$?
+          { echo "Exit status: $status"; echo "Volumes after:"; ls /Volumes; } >> mac-shots/install-selftest-output.txt
+          cat mac-shots/install-selftest-output.txt
+          cp "$RUNNER_TEMP/install-test/report.txt" mac-shots/install-selftest.txt
           exit $status
 
       - name: Publish screenshots to the ci-screenshots-mac branch
