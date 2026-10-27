@@ -128,12 +128,17 @@ enum InstallDoctor {
     /// Ejects every mounted disk image that contains Mac Action Recorder, except the one this copy
     /// runs from. Returns the names of the disks that were ejected.
     static func ejectOldDiskImages() -> [String] {
+        // A copy macOS moved to a temporary place may be running from one of the disks; leave them.
+        guard location != .translocated else { return [] }
         guard let data = run("/usr/bin/hdiutil", ["info", "-plist"]).output else { return [] }
         var ejected: [String] = []
         let myPath = selfPath
+        // Copies that are still running (or still quitting) from a disk keep it mounted for now.
+        let runningPaths = otherInstances().compactMap { $0.bundleURL?.standardizedFileURL.path }
         for point in Installation.diskImageMountPoints(fromHdiutilInfo: data) {
             guard containsThisApp(volume: point) else { continue }
             if myPath.hasPrefix(point + "/") { continue }
+            if runningPaths.contains(where: { $0.hasPrefix(point + "/") }) { continue }
             var result = run("/usr/bin/hdiutil", ["detach", point, "-quiet"])
             if result.status != 0 {
                 // A Finder window showing the disk can keep it busy; the disk only holds the installer.
