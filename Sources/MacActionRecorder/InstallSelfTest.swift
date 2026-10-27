@@ -26,6 +26,21 @@ enum InstallSelfTest {
         if !ok { failures += 1 }
     }
 
+    /// Runs the signing script and waits for it. Must be called off the main thread: the
+    /// script's results are delivered on the main thread.
+    private static func prepareAndWait(_ app: URL, onLine: @escaping (String) -> Void) -> AppInstaller.PrepareResult? {
+        let done = DispatchSemaphore(value: 0)
+        var result: AppInstaller.PrepareResult?
+        DispatchQueue.main.async {
+            AppInstaller.prepare(app, onLine: onLine) { outcome in
+                result = outcome
+                done.signal()
+            }
+        }
+        _ = done.wait(timeout: .now() + 180)
+        return result
+    }
+
     static func run(in work: URL) {
         let fm = FileManager.default
         try? fm.removeItem(at: work)
@@ -55,13 +70,8 @@ enum InstallSelfTest {
         try? fm.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
         let copied = InstallDoctor.run("/usr/bin/ditto", [InstallDoctor.selfPath, staged.path])
         check(copied.status == 0, "copied the app with ditto")
-        var signResult: AppInstaller.PrepareResult?
         var seenLines: [String] = []
-        AppInstaller.prepare(staged, onLine: { seenLines.append($0) }) { signResult = $0 }
-        let deadline = Date().addingTimeInterval(120)
-        while signResult == nil && Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-        }
+        let signResult = prepareAndWait(staged) { seenLines.append($0) }
         log("Signing result: \(String(describing: signResult)); lines seen: \(seenLines)")
         check(signResult == .signed, "the copy was signed with the local certificate")
         check(!seenLines.isEmpty, "the progress screen received live lines from the signing script")
@@ -73,12 +83,9 @@ enum InstallSelfTest {
         let second = work.appendingPathComponent("second/Mac Action Recorder.app")
         try? fm.createDirectory(at: second.deletingLastPathComponent(), withIntermediateDirectories: true)
         _ = InstallDoctor.run("/usr/bin/ditto", [InstallDoctor.selfPath, second.path])
-        signResult = nil
-        AppInstaller.prepare(second) { signResult = $0 }
-        while signResult == nil && Date() < deadline.addingTimeInterval(60) {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-        }
-        check(Permissions.signatureRequirement(of: second) == stagedRequirement, "signing again gives the same requirement (permissions survive updates)")
+        let secondResult = prepareAndWait(second) { _ in }
+        log("Second signing result: \(String(describing: secondResult))")
+        check(secondResult == .signed && Permissions.signatureRequirement(of: second) == stagedRequirement, "signing again gives the same requirement (permissions survive updates)")
 
         // 3. Swap helper: waits for the old process, replaces the app, removes the staged copy.
         let dest = work.appendingPathComponent("Applications/Mac Action Recorder.app")

@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // CI only: test the install machinery and quit (see InstallSelfTest).
         if let folder = InstallSelfTest.requestedFolder {
-            DispatchQueue.main.async { InstallSelfTest.run(in: folder) }
+            DispatchQueue.global(qos: .userInitiated).async { InstallSelfTest.run(in: folder) }
             return
         }
         // CI only: draw the screens to image files and quit (see Screenshotter).
