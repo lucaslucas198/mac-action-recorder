@@ -425,7 +425,8 @@ struct SetupProgressView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                if setup.stepElapsed > step.typicalSeconds * 2.5, let hint = step.slowHint {
+                // Signing is where macOS may show a password window, so say so early.
+                if setup.stepElapsed > (step == .signing ? 3 : step.typicalSeconds * 2.5), let hint = step.slowHint {
                     Label(hint, systemImage: "hand.point.up.left")
                         .font(.callout)
                         .foregroundStyle(.orange)
