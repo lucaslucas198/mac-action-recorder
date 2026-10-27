@@ -3,28 +3,70 @@ import MacActionRecorderCore
 import SwiftUI
 
 struct SettingsView: View {
-    var body: some View {
-        TabView {
-            GeneralSettingsTab()
-                .tabItem { Label("General", systemImage: "slider.horizontal.3") }
-            RecordingSettingsTab()
-                .tabItem { Label("Recording", systemImage: "record.circle") }
-            PlaybackSettingsTab()
-                .tabItem { Label("Playback", systemImage: "play.circle") }
-            SafetySettingsTab()
-                .tabItem { Label("Safety", systemImage: "shield.lefthalf.filled") }
-            DiscordSettingsTab()
-                .tabItem { Label("Discord", systemImage: "bubble.left.and.bubble.right") }
-            AISettingsTab()
-                .tabItem { Label("AI", systemImage: "sparkles") }
-            StorageSettingsTab()
-                .tabItem { Label("Storage", systemImage: "externaldrive") }
-            PermissionsSettingsTab()
-                .tabItem { Label("Privacy", systemImage: "lock.shield") }
-            UpdatesSettingsTab()
-                .tabItem { Label("Updates", systemImage: "arrow.triangle.2.circlepath") }
+    enum Pane: String, CaseIterable, Identifiable {
+        case general, recording, playback, safety, discord, ai, storage, privacy, updates
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .general: return "General"
+            case .recording: return "Recording"
+            case .playback: return "Playback"
+            case .safety: return "Safety"
+            case .discord: return "Discord"
+            case .ai: return "AI"
+            case .storage: return "Storage"
+            case .privacy: return "Permissions & Privacy"
+            case .updates: return "Updates"
+            }
         }
-        .frame(minWidth: 720, minHeight: 560)
+
+        var symbol: String {
+            switch self {
+            case .general: return "slider.horizontal.3"
+            case .recording: return "record.circle"
+            case .playback: return "play.circle"
+            case .safety: return "shield.lefthalf.filled"
+            case .discord: return "bubble.left.and.bubble.right"
+            case .ai: return "sparkles"
+            case .storage: return "externaldrive"
+            case .privacy: return "lock.shield"
+            case .updates: return "arrow.triangle.2.circlepath"
+            }
+        }
+    }
+
+    @State private var pane: Pane? = .general
+
+    var body: some View {
+        // A sidebar instead of a tab bar: nine sections do not fit side by side in a tab bar.
+        NavigationSplitView {
+            List(Pane.allCases, selection: $pane) { item in
+                Label(item.title, systemImage: item.symbol)
+                    .tag(item)
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+        } detail: {
+            detail(pane ?? .general)
+                .navigationTitle((pane ?? .general).title)
+        }
+        .frame(minWidth: 780, minHeight: 560)
+    }
+
+    @ViewBuilder
+    private func detail(_ pane: Pane) -> some View {
+        switch pane {
+        case .general: GeneralSettingsTab()
+        case .recording: RecordingSettingsTab()
+        case .playback: PlaybackSettingsTab()
+        case .safety: SafetySettingsTab()
+        case .discord: DiscordSettingsTab()
+        case .ai: AISettingsTab()
+        case .storage: StorageSettingsTab()
+        case .privacy: PermissionsSettingsTab()
+        case .updates: UpdatesSettingsTab()
+        }
     }
 }
 
@@ -591,7 +633,7 @@ struct PermissionsSettingsTab: View {
                     request: { Permissions.requestAccessibility() },
                     open: { Permissions.openAccessibilitySettings() }
                 )
-                Text("Enable Mac Action Recorder in System Settings > Privacy & Security for both. This page re-checks every couple of seconds. macOS ties permissions to the app's code signature, so after you rebuild or replace the app you may need to remove it from each list (with the minus button), add it again, and relaunch it.")
+                Text("Enable Mac Action Recorder in System Settings > Privacy & Security for both. This page re-checks every couple of seconds. Help > Welcome & Setup has step-by-step instructions. If a switch is on but the app still says not granted, use Reset This App's Permissions below, then switch it on again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

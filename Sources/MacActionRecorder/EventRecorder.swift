@@ -10,7 +10,7 @@ enum RecorderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Input Monitoring permission is required to record. Open Settings > Permissions to grant it."
+            return "Input Monitoring permission is required to record. Open Help > Welcome & Setup to switch it on."
         case .tapFailed:
             return "macOS would not let the app observe input events. Check the Input Monitoring permission and try again."
         }

@@ -86,7 +86,7 @@ enum Screenshotter {
                  view: { AnyView(MacroCheckSheet().environmentObject(model)) }),
             Shot(name: "21-add-click", size: CGSize(width: 440, height: 520), dark: false, prepare: main(false),
                  view: { AnyView(ActionEditSheet(action: .click(x: 640, y: 412), mode: .add(afterID: nil)).environmentObject(model)) }),
-            Shot(name: "30-settings-window", size: CGSize(width: 760, height: 640), dark: false, prepare: main(false),
+            Shot(name: "30-settings-window", size: CGSize(width: 900, height: 660), dark: false, prepare: main(false),
                  view: { AnyView(SettingsView().environmentObject(model)) }),
             Shot(name: "31-settings-general", size: CGSize(width: 760, height: 640), dark: false, prepare: main(false), view: settingsTab(GeneralSettingsTab())),
             Shot(name: "32-settings-recording", size: CGSize(width: 760, height: 640), dark: false, prepare: main(false), view: settingsTab(RecordingSettingsTab())),

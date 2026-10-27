@@ -27,7 +27,7 @@ Mac app (Windows unchanged). Focus: installing, one copy of the app, permissions
 
 **On-device AI**
 
-- The model is loaded ahead of time when the Check sheet opens, answers use a low temperature so the strict reply formats are followed more often, one request runs at a time, prompts are kept short, and a request that takes longer than 60 seconds is stopped with a clear message instead of spinning forever.
+- The model is loaded ahead of time when the Check sheet opens, answers use a low temperature so the strict reply formats are followed more often, and prompts are kept short. Every AI action shows *Thinking… N s* with a **Stop** button, and a request that takes longer than 60 seconds is stopped with a clear message instead of spinning forever. (Not measured: how much faster answers are on a real Mac.)
 
 **Layout**
 
