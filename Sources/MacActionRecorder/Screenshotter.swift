@@ -112,7 +112,10 @@ enum Screenshotter {
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: shot.dark ? .darkAqua : .aqua)
             window.title = shot.name
-            let host = NSHostingView(rootView: shot.view().frame(width: shot.size.width, height: shot.size.height))
+            let host = NSHostingView(rootView: shot.view()
+                .frame(width: shot.size.width, height: shot.size.height)
+                // The capture does not include the window's own background, so draw it.
+                .background(Color(nsColor: .windowBackgroundColor)))
             window.contentView = host
             window.setContentSize(shot.size)
             window.orderFrontRegardless()

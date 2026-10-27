@@ -73,7 +73,7 @@ struct UpdatesSettingsTab: View {
             Section("How updates work") {
                 bullet("The app asks GitHub (\(UpdateConfig.repository)) for the newest release. That request is the only network use. It sends no recordings, settings or personal data; GitHub sees your IP address like any web request.")
                 bullet("A newer version is downloaded as the finished app from that release. Nothing is built on your Mac and Xcode is not needed. Nothing is installed until you click Restart to Update.")
-                bullet("The new app is signed on this Mac with the same local certificate, so macOS permissions normally carry over. If they do not, use Reset This App's Permissions in the Permissions & Privacy tab.")
+                bullet("The new app is signed on this Mac with the same local certificate, so macOS permissions normally carry over. If they do not, use Repair in Help > Welcome & Setup.")
                 bullet("Turn the checks off here to make the app use no network at all.")
             }
         }

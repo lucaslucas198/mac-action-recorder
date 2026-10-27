@@ -193,6 +193,7 @@ final class AppModel: ObservableObject {
     private var didHideApp = false
     private var lastRange: Range<Int>?
     private var rememberedGrant = false
+    private var permissionsOverridden = false
     /// Where the pointer was when playback began, to put it back afterwards (if that is switched on).
     private var pointerAtStart: CGPoint?
     /// Number of actions the app prepends (opening the start channel) in the current run.
@@ -361,6 +362,7 @@ final class AppModel: ObservableObject {
     // MARK: Permissions
 
     func refreshPermissions() {
+        if permissionsOverridden { return }
         let accessibility = Permissions.accessibilityGranted
         let input = Permissions.inputMonitoringGranted || inputMonitoringWorks
         if accessibility != accessibilityGranted { accessibilityGranted = accessibility }
@@ -399,7 +401,7 @@ final class AppModel: ObservableObject {
         }
         guard Permissions.inputMonitoringGranted || inputMonitoringWorks else {
             Permissions.requestInputMonitoring()
-            fail("Recording needs the Input Monitoring permission. Enable Mac Action Recorder in System Settings > Privacy & Security > Input Monitoring, then choose Quit and Reopen (Settings > Permissions & Privacy has both shortcuts). If it is already switched on, the app was probably rebuilt since: use Reset This App's Permissions there and grant it again.")
+            fail("Recording needs the Input Monitoring permission. Click Fix Permissions in the orange bar (or Help > Welcome & Setup): it opens the right page in System Settings. After switching it on, click Quit and Reopen. If it is already on but still not working, use Repair there.")
             return
         }
 
@@ -564,7 +566,7 @@ final class AppModel: ObservableObject {
         refreshPermissions()
         guard Permissions.accessibilityGranted else {
             Permissions.requestAccessibility()
-            fail("Playback needs the Accessibility permission. Enable Mac Action Recorder in System Settings > Privacy & Security > Accessibility (Settings > Permissions has a shortcut), then try again.")
+            fail("Playback needs the Accessibility permission. Click Fix Permissions in the orange bar (or Help > Welcome & Setup): it opens the right page in System Settings. Switch Mac Action Recorder on there, then try again.")
             return
         }
 
@@ -1481,6 +1483,7 @@ final class AppModel: ObservableObject {
     func setPermissionsForScreenshots(accessibility: Bool, inputMonitoring: Bool) {
         permissionTimer?.invalidate()
         permissionTimer = nil
+        permissionsOverridden = true
         rememberedGrant = true
         accessibilityGranted = accessibility
         inputMonitoringGranted = inputMonitoring

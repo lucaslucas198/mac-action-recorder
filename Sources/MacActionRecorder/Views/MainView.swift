@@ -116,36 +116,24 @@ struct PermissionBanner: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: "lock.shield")
+                .font(.title3)
                 .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(message)
-                    .font(.callout)
-                HStack {
-                    if !model.inputMonitoringGranted {
-                        Button("Grant Input Monitoring") {
-                            Permissions.requestInputMonitoring()
-                            Permissions.openInputMonitoringSettings()
-                        }
-                    }
-                    if !model.accessibilityGranted {
-                        Button("Grant Accessibility") {
-                            Permissions.requestAccessibility()
-                            Permissions.openAccessibilitySettings()
-                        }
-                    }
-                    Button("Quit and Reopen") { Permissions.relaunch() }
-                        .help("Some permission changes only take effect after the app restarts")
-                }
-                .controlSize(.small)
-                Text("Already switched on? Choose Quit and Reopen. If it still says not granted, the app was rebuilt since: open Settings > Permissions & Privacy and use Reset This App's Permissions.")
+                    .font(.callout.weight(.medium))
+                Text("The setup page shows exactly where to switch it on, and can repair old entries.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
+            Spacer(minLength: 8)
+            Button("Quit and Reopen") { Permissions.relaunch() }
+                .help("Input Monitoring often only works after the app restarts")
+            Button("Fix Permissions…") { model.showSetupScreen() }
+                .buttonStyle(.borderedProminent)
         }
+        .controlSize(.small)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(Color.orange.opacity(0.12))
@@ -154,11 +142,11 @@ struct PermissionBanner: View {
     private var message: String {
         switch (model.inputMonitoringGranted, model.accessibilityGranted) {
         case (false, false):
-            return "Recording needs Input Monitoring and playback needs Accessibility. Neither is granted yet."
+            return "Recording needs Input Monitoring and playback needs Accessibility. Neither is allowed yet."
         case (false, true):
-            return "Recording needs the Input Monitoring permission, which is not granted yet."
+            return "Recording needs Input Monitoring, which is not allowed yet."
         default:
-            return "Playback needs the Accessibility permission, which is not granted yet."
+            return "Playback needs Accessibility, which is not allowed yet."
         }
     }
 }

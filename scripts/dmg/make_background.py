@@ -49,7 +49,8 @@ def draw(scale):
         box = d.textbbox((0, 0), text, font=f)
         d.text(((w - (box[2] - box[0])) / 2 - box[0], y - box[1]), text, font=f, fill=fill)
 
-    centered("Drag Mac Action Recorder onto Applications", 36 * scale, font(BOLD, 24 * scale), (255, 255, 255))
+    centered("1. Drag Mac Action Recorder onto Applications", 26 * scale, font(BOLD, 22 * scale), (255, 255, 255))
+    centered("2. Open it from Applications. It finishes setting itself up and ejects this disk.", 60 * scale, font(FONTS, 14 * scale), (235, 240, 248))
 
     # Arrow between the two icon positions (icons sit at x=165 and x=495, y=190).
     y = 190 * scale
@@ -66,10 +67,10 @@ def draw(scale):
     bold = font(BOLD, 14 * scale)
     small = font(FONTS, 13 * scale)
     white = (255, 255, 255)
-    centered("macOS will say: \u201cApple could not verify Mac Action Recorder\u2026\u201d", 302 * scale, bold, white)
-    centered("This is expected: the app is not notarized by Apple. Click Done (NOT Move to Trash),", 328 * scale, small, white)
-    centered("then open System Settings > Privacy & Security and click Open Anyway.", 348 * scale, small, white)
-    centered("Or in Terminal: xattr -dr com.apple.quarantine \"/Applications/Mac Action Recorder.app\"", 366 * scale, small, white)
+    centered("First time only: macOS says \u201cApple could not verify\u2026\u201d", 302 * scale, bold, white)
+    centered("That is expected (the app is not notarized). Click Done, NOT Move to Trash. Then open", 328 * scale, small, white)
+    centered("System Settings > Privacy & Security, scroll down, and click Open Anyway.", 348 * scale, small, white)
+    centered("Updates installed from inside the app (Restart to Update) do not ask again.", 366 * scale, small, white)
     return img
 
 
