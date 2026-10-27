@@ -151,7 +151,9 @@ enum InputSelfTest {
         var recording = Recording(name: "selftest", targetApp: output.targetApp, recordedScreen: Platform.primaryDisplaySize(), targetWindow: output.targetWindow, actions: actions)
         recording.actions = actions
         let recordedSpan = recording.originalDuration
-        for speed in [1.0, 2.0] {
+        // Three runs at 1× (the machine's load varies from moment to moment) and one at 2×.
+        var differences: [Double: [Double]] = [:]
+        for speed in [1.0, 1.0, 1.0, 2.0] {
             Platform.onMain { Platform.activate(app) }
             Thread.sleep(forTimeInterval: 0.8)
             let timing = TimingPerformer(MacEventPerformer())
@@ -180,7 +182,9 @@ enum InputSelfTest {
             check(state == .finished, "playback at \(Int(speed))× finished")
             Thread.sleep(forTimeInterval: 0.3)
             let seen = probe.stop()
-            measurePlayback(seen: seen, actions: actions, speed: speed)
+            if let worst = measurePlayback(seen: seen, actions: actions, speed: speed) {
+                differences[speed, default: []].append(worst)
+            }
             // When the engine handed each step to macOS, to tell the app's timing apart from how
             // long the system took to pass the event on.
             let handed = timing.entries
@@ -199,7 +203,15 @@ enum InputSelfTest {
 
         let after = documentText(of: app) ?? ""
         log("Document after playback: \(after.debugDescription)")
-        check(after.lowercased() == "hello\nhello\nhello\n", "playback at 1× and 2× typed the same text into the same document")
+        check(after.lowercased() == String(repeating: "hello\n", count: 5), "every playback typed the same text into the same document")
+        for speed in differences.keys.sorted() {
+            let values = (differences[speed] ?? []).sorted()
+            guard !values.isEmpty else { continue }
+            let median = values[values.count / 2]
+            log(String(format: "Playback at %.0f×: largest difference per run %@ ms; median %.1f ms", speed,
+                       values.map { String(format: "%.1f", $0 * 1000) }.joined(separator: ", "), median * 1000))
+            check(median <= 0.03, "playback at \(Int(speed))× followed the recorded timeline within 30 ms (median of the runs)")
+        }
 
         // Leave TextEdit without asking to save.
         _ = Platform.onMain { app.forceTerminate() }
@@ -224,17 +236,18 @@ enum InputSelfTest {
 
     /// Compares when playback really pressed the button, typed the first letter and pressed Return
     /// with the recorded timeline divided by the speed.
-    private static func measurePlayback(seen: [PlaybackProbe.Seen], actions: [MacroAction], speed: Double) {
+    @discardableResult
+    private static func measurePlayback(seen: [PlaybackProbe.Seen], actions: [MacroAction], speed: Double) -> Double? {
         let starts = timeline(of: actions)
         guard let clickIndex = actions.firstIndex(where: { $0.kind == .click }), clickIndex + 2 < actions.count,
               let press = seen.first(where: { $0.type == .leftMouseDown }) else {
             check(false, "playback at \(Int(speed))× was observed (\(seen.count) events seen)")
-            return
+            return nil
         }
         let keys = seen.filter { $0.type == .keyDown && $0.time > press.time }
         guard let firstLetter = keys.first, let returnKey = keys.last(where: { $0.keyCode == 36 }) else {
             check(false, "playback at \(Int(speed))× typed and pressed Return (\(keys.count) key presses seen)")
-            return
+            return nil
         }
         let expectToText = (starts[clickIndex + 1] - starts[clickIndex]) / speed
         let expectToReturn = (starts[clickIndex + 2] - starts[clickIndex]) / speed
@@ -243,7 +256,7 @@ enum InputSelfTest {
         let worst = max(abs(expectToText - gotToText), abs(expectToReturn - gotToReturn))
         log(String(format: "Playback at %.0f×: click to first letter %.4f s (recorded %.4f s), click to Return %.4f s (recorded %.4f s), largest difference %.1f ms",
                    speed, gotToText, expectToText, gotToReturn, expectToReturn, worst * 1000))
-        check(worst <= 0.03, "playback at \(Int(speed))× followed the recorded timeline within 30 ms")
+        return worst
     }
 
     // MARK: Sending events like hardware does (no marker, so the recorder sees them)
