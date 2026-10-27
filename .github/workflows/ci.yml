@@ -223,6 +223,13 @@ jobs:
         run: |
           set +e
           mkdir -p mac-shots
+          # A throw-away keychain: on a runner nobody can answer the prompts the login keychain shows.
+          export MAR_SIGNING_KEYCHAIN="$RUNNER_TEMP/selftest.keychain-db"
+          export MAR_SIGNING_KEYCHAIN_PASSWORD="selftest"
+          security create-keychain -p selftest "$MAR_SIGNING_KEYCHAIN"
+          security set-keychain-settings "$MAR_SIGNING_KEYCHAIN"
+          security unlock-keychain -p selftest "$MAR_SIGNING_KEYCHAIN"
+          security list-keychains -d user -s "$MAR_SIGNING_KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           hdiutil attach dist/MacActionRecorder-macOS.dmg -quiet
           { echo "Volumes before:"; ls /Volumes; } | tee mac-shots/install-selftest-output.txt
           "build/Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" --selftest-install "$RUNNER_TEMP/install-test" >> mac-shots/install-selftest-output.txt 2>&1 &

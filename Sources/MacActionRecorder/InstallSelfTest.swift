@@ -18,7 +18,8 @@ enum InstallSelfTest {
 
     private static func log(_ text: String) {
         lines.append(text)
-        print(text)
+        // Unbuffered, so nothing is lost if the run is stopped.
+        FileHandle.standardOutput.write((text + "\n").data(using: .utf8) ?? Data())
     }
 
     private static func check(_ ok: Bool, _ what: String) {
@@ -37,7 +38,7 @@ enum InstallSelfTest {
                 done.signal()
             }
         }
-        _ = done.wait(timeout: .now() + 180)
+        _ = done.wait(timeout: .now() + 90)
         return result
     }
 
@@ -71,7 +72,10 @@ enum InstallSelfTest {
         let copied = InstallDoctor.run("/usr/bin/ditto", [InstallDoctor.selfPath, staged.path])
         check(copied.status == 0, "copied the app with ditto")
         var seenLines: [String] = []
-        let signResult = prepareAndWait(staged) { seenLines.append($0) }
+        let signResult = prepareAndWait(staged) { line in
+            seenLines.append(line)
+            log("  script: " + line)
+        }
         log("Signing result: \(String(describing: signResult)); lines seen: \(seenLines)")
         check(signResult == .signed, "the copy was signed with the local certificate")
         check(!seenLines.isEmpty, "the progress screen received live lines from the signing script")

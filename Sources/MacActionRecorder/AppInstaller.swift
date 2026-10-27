@@ -15,9 +15,23 @@ enum AppInstaller {
     /// not ask for it again and again.
     private static let signingUnavailableKey = "localSigningUnavailable"
 
+    /// Remembered per app version, so a later version tries again (the reason it failed, such as
+    /// a locked keychain, may be gone by then).
     static var signingUnavailable: Bool {
-        get { UserDefaults.standard.bool(forKey: signingUnavailableKey) }
-        set { UserDefaults.standard.set(newValue, forKey: signingUnavailableKey) }
+        get {
+            return UserDefaults.standard.string(forKey: signingUnavailableKey) == currentVersion
+        }
+        set {
+            if newValue {
+                UserDefaults.standard.set(currentVersion, forKey: signingUnavailableKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: signingUnavailableKey)
+            }
+        }
+    }
+
+    private static var currentVersion: String {
+        return (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
     }
 
     /// True when the app is signed with a fixed certificate rather than an ad-hoc signature, so
@@ -40,10 +54,11 @@ enum AppInstaller {
 
     /// Runs `prepare_app.sh` on `app` in the background and reports on the main thread.
     /// `onLine` receives each line the script prints, so the progress screen can show what it is doing.
-    static func prepare(_ app: URL, onLine: ((String) -> Void)? = nil, completion: @escaping (PrepareResult) -> Void) {
+    @discardableResult
+    static func prepare(_ app: URL, onLine: ((String) -> Void)? = nil, completion: @escaping (PrepareResult) -> Void) -> Process? {
         guard let script = bundledScript("prepare_app") else {
             completion(.failed("The app's helper script is missing. Download the app again."))
-            return
+            return nil
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -61,8 +76,8 @@ enum AppInstaller {
             collected += text
             lock.unlock()
             let lines = text.split(whereSeparator: { $0.isNewline }).map { String($0) }.filter { !$0.isEmpty }
-            if let last = lines.last {
-                DispatchQueue.main.async { onLine?(last) }
+            if !lines.isEmpty {
+                DispatchQueue.main.async { lines.forEach { onLine?($0) } }
             }
         }
         process.terminationHandler = { finished in
@@ -86,7 +101,9 @@ enum AppInstaller {
         } catch {
             output.fileHandleForReading.readabilityHandler = nil
             completion(.failed("Could not run the helper script: \(error.localizedDescription)"))
+            return nil
         }
+        return process
     }
 
     /// Copies the running app next to the support folder so it can be prepared without touching

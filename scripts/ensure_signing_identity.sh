@@ -16,7 +16,9 @@
 set -uo pipefail
 
 NAME="Mac Action Recorder Local Signing"
-KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+# The login keychain. MAR_SIGNING_KEYCHAIN (and its password) are only set by the CI self-test,
+# which uses a throw-away keychain because nobody is there to answer macOS's prompts.
+KEYCHAIN="${MAR_SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 0
@@ -49,12 +51,16 @@ keyUsage = critical,digitalSignature
 extendedKeyUsage = critical,codeSigning
 CONF
 
-echo "==> Creating a local code-signing certificate (one time) so permissions survive rebuilds" >&2
+echo "==> Creating this Mac's signing certificate (one time only)" >&2
 if /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
         -keyout "$TMP/key.pem" -out "$TMP/cert.pem" -config "$TMP/cert.conf" >/dev/null 2>&1 \
     && /usr/bin/openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
         -out "$TMP/identity.p12" -passout "pass:$PASS" >/dev/null 2>&1 \
     && security import "$TMP/identity.p12" -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign >/dev/null 2>&1; then
+    if [[ -n "${MAR_SIGNING_KEYCHAIN_PASSWORD:-}" ]]; then
+        security set-key-partition-list -S apple-tool:,apple: -s -k "$MAR_SIGNING_KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null 2>&1 || true
+    fi
+    echo "==> Certificate added to the keychain" >&2
     if security find-identity -p codesigning 2>/dev/null | grep -q "\"$NAME\""; then
         echo "$NAME"
         exit 0

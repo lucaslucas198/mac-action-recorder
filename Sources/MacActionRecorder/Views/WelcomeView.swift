@@ -422,6 +422,16 @@ struct SetupProgressView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .transition(.opacity)
                 }
+                if setup.canSkipSigning {
+                    HStack {
+                        Text("Still waiting? You can install without the signature; macOS may then forget the permissions after an update.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Continue Without Signing") { setup.skipSigning() }
+                            .controlSize(.small)
+                    }
+                }
             }
             StepList(planned: setup.plannedSteps, completed: setup.completed, current: setup.currentStep)
         }

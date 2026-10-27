@@ -51,6 +51,22 @@ final class SetupManager: ObservableObject {
     private static let completedKey = "setupCompletedSteps"
 
     private var stepStartedAt = Date()
+    private var signingProcess: Process?
+    private var skippedSigning = false
+
+    /// True while signing waits long enough that the user may want to go on without it.
+    var canSkipSigning: Bool {
+        return currentStep == .signing && signingProcess != nil && stepElapsed > 30
+    }
+
+    /// Stops waiting for signing (for example when a macOS password prompt cannot be answered)
+    /// and installs the app without the local signature.
+    func skipSigning() {
+        guard let process = signingProcess, process.isRunning else { return }
+        skippedSigning = true
+        liveLine = "Skipping the signature…"
+        process.terminate()
+    }
     private var ticker: Timer?
 
     private init() {
@@ -179,22 +195,37 @@ final class SetupManager: ObservableObject {
 
     private func sign(copy: URL, destination: URL) {
         begin(.signing)
-        AppInstaller.prepare(copy, onLine: { [weak self] line in
+        skippedSigning = false
+        signingProcess = AppInstaller.prepare(copy, onLine: { [weak self] line in
             self?.liveLine = SetupManager.friendly(line)
-        }, completion: { [weak self] outcome in
+        }, completion: { [weak self] result in
             guard let self = self, self.isWorking else { return }
+            self.signingProcess = nil
+            // Skipping stops the script; carry on with the copy as it is.
+            let outcome: AppInstaller.PrepareResult = self.skippedSigning ? .unsigned : result
             switch outcome {
             case .failed(let message):
                 self.fail(message.isEmpty ? "Signing the app failed." : message)
                 return
             case .unsigned:
                 AppInstaller.signingUnavailable = true
-                self.finish(.signing, note: "Not possible on this Mac; permissions may need switching on again after updates")
+                self.finish(.signing, note: self.skippedSigning ? "Skipped" : "Not possible on this Mac; permissions may need switching on again after updates")
                 self.note = "A signing certificate could not be created on this Mac. The app works, but macOS may forget its permissions after each update."
                 if InstallDoctor.location.isInstalled {
                     // Nothing to move: carry on with the tidy-up here.
                     self.plannedSteps.removeAll { $0 == .installing || $0 == .reopening }
                     self.startTidyUp(resuming: true)
+                    return
+                }
+                if self.skippedSigning {
+                    // The stopped script may have left the copy half-signed: start from a fresh copy.
+                    AppInstaller.makeWorkingCopy { [weak self] fresh in
+                        guard let self = self, self.isWorking else { return }
+                        switch fresh {
+                        case .success(let clean): self.install(copy: clean, destination: destination)
+                        case .failure(let error): self.fail(error.localizedDescription)
+                        }
+                    }
                     return
                 }
             case .signed:
