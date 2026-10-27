@@ -44,6 +44,10 @@ final class SetupManager: ObservableObject {
     /// True once this copy is installed and needs nothing more.
     @Published private(set) var isDone: Bool
 
+    /// True when the app opened the setup screen by itself (after an update), so it may also close
+    /// it by itself when nothing is left to do.
+    @Published private(set) var openedAutomatically = false
+
     /// The steps this run will go through, for the list on screen.
     @Published private(set) var plannedSteps: [SetupStep] = []
 
@@ -90,6 +94,7 @@ final class SetupManager: ObservableObject {
         guard InstallDoctor.isAppBundle else { return }
         let defaults = UserDefaults.standard
         if isContinuing {
+            openedAutomatically = model.settings.hasCompletedWelcome
             model.showSetupScreen()
             if InstallDoctor.needsSetup {
                 // The reopened copy is still not installed and signed: replacing the app did not
@@ -107,6 +112,7 @@ final class SetupManager: ObservableObject {
             let thisCopy = InstallDoctor.selfPath + "|" + InstallDoctor.requirement
             if model.settings.hasCompletedWelcome && defaults.string(forKey: attemptKey) != thisCopy {
                 defaults.set(thisCopy, forKey: attemptKey)
+                openedAutomatically = true
                 model.showSetupScreen()
                 run()
             } else {
