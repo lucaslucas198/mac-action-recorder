@@ -32,6 +32,7 @@ Mac app. Focus: installing, one copy of the app, permissions, replay timing, and
 - Holding a click for longer than 0.25 s plays as press, wait, release, so Stop works during a long press.
 - The foreground and safety checks run just before each step is due (20 ms early) and no longer wait for the app's main thread, so they do not make the step late. Playback runs at the highest thread priority.
 - While playing or recording, the app asks macOS for precise timers. Before, macOS could put the hidden app into App Nap during playback and let its waits run tens of milliseconds late. This also keeps the Mac from going to sleep in the middle of a run (the display can still turn off).
+- Waits are made more punctual: long waits are split into halves of what is left (macOS may let a wait end late by a share of its length), and the last 15 ms before each step and each typed character use the precise system clock. Stop and Pause still take effect within 15 ms.
 - Recording keeps macOS's own event time even when the app reads an event late (before, a busy app could lose the exact time). Rounding to milliseconds no longer adds up over long macros.
 - Deleting a click or text keeps the actions after it at the same time.
 - Measured by CI on a macOS 26 virtual machine (recording and replaying a click and a word in TextEdit): see README > Verification status for the numbers.
