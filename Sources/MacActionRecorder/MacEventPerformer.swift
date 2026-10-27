@@ -127,7 +127,7 @@ final class MacEventPerformer: ActionPerformer {
 
         let modifiers = action.modifiers ?? []
         let t = timing
-        let (hold, gap) = MacEventPerformer.clickTiming(count: count, recorded: action.duration, timing: t)
+        let (hold, gap) = PlaybackTiming.pressTiming(count: count, recorded: action.duration, clickHold: t.clickHold, doubleClickGap: t.doubleClickGap)
 
         try moveCursorAndSettle(to: location, settle: t.settleBeforeClick)
 
@@ -139,24 +139,6 @@ final class MacEventPerformer: ActionPerformer {
                 Thread.sleep(forTimeInterval: gap)
             }
         }
-    }
-
-    /// How long each press is held and the gap between presses. With a recorded time (first press
-    /// to last release, already scaled for speed), a single click holds for exactly that long and a
-    /// double or triple click spreads it over its presses; otherwise the timing settings are used.
-    static func clickTiming(count: Int, recorded: Double?, timing t: InputTiming) -> (hold: Double, gap: Double) {
-        guard let total = recorded, total.isFinite, total > 0 else {
-            return (t.clickHold, t.doubleClickGap)
-        }
-        if count <= 1 {
-            return (min(total, PlaybackTiming.maxClickHold), t.doubleClickGap)
-        }
-        let presses = Double(count)
-        // Keep each press short and give the rest to the gaps, which is how a quick double-click
-        // looks; the gaps stay well inside the system's double-click time.
-        let hold = min(t.clickHold, total / (2 * presses - 1))
-        let gap = min(0.4, max(0.005, (total - presses * hold) / (presses - 1)))
-        return (max(0.001, hold), gap)
     }
 
     /// Moves the pointer to `location` and, if it was somewhere else, waits `settle` seconds so the

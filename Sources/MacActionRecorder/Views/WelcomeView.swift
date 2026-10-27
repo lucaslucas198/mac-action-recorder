@@ -269,19 +269,14 @@ struct WelcomeView: View {
                         }
                     )
                     Divider()
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Switched it on but it still says Not allowed?")
-                            .font(.callout.weight(.medium))
-                        Text("Input Monitoring often needs the app to restart: click Quit and Reopen. If that does not help, Repair removes this app's old entries from both lists; then switch it on again.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack {
-                            Button("Check Again") { model.recheckInputMonitoring() }
-                            Button("Quit and Reopen") { Permissions.relaunch() }
-                            Button("Repair…") { confirmRepair = true }
+                    if model.inputMonitoringGranted && model.accessibilityGranted {
+                        DisclosureGroup("Trouble with permissions later?") {
+                            permissionHelp
+                                .padding(.top, 4)
                         }
-                        .controlSize(.small)
+                        .font(.callout)
+                    } else {
+                        permissionHelp
                     }
                 }
             }
@@ -300,6 +295,24 @@ struct WelcomeView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Mac Action Recorder is removed from the Input Monitoring and Accessibility lists. Nothing else changes. macOS then asks again, and you switch both on.")
+        }
+    }
+
+    /// What to do when a switch is on but the app still says it is not allowed.
+    private var permissionHelp: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Switched it on but it still says Not allowed?")
+                .font(.callout.weight(.medium))
+            Text("Input Monitoring often needs the app to restart: click Quit and Reopen. If that does not help, Repair removes this app's old entries from both lists; then switch it on again.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Check Again") { model.recheckInputMonitoring() }
+                Button("Quit and Reopen") { Permissions.relaunch() }
+                Button("Repair…") { confirmRepair = true }
+            }
+            .controlSize(.small)
         }
     }
 

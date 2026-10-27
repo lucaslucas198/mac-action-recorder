@@ -130,6 +130,23 @@ public enum PlaybackTiming {
         return max(gap, max(0, config.minTypingCharDelay))
     }
 
+    /// How long each press of a click is held and the gap between presses. With a recorded time
+    /// (first press to last release, already scaled for speed) a single click holds for exactly that
+    /// long and a double or triple click spreads it over its presses, keeping each press short and
+    /// the gaps inside the system's double-click time. Without one, the timing settings are used.
+    public static func pressTiming(count: Int, recorded: Double?, clickHold: Double, doubleClickGap: Double) -> (hold: Double, gap: Double) {
+        guard let total = recorded, total.isFinite, total > 0 else {
+            return (clickHold, doubleClickGap)
+        }
+        if count <= 1 {
+            return (min(total, maxClickHold), doubleClickGap)
+        }
+        let presses = Double(count)
+        let hold = max(0.001, min(clickHold, total / (2 * presses - 1)))
+        let gap = min(0.4, max(0.005, (total - presses * hold) / (presses - 1)))
+        return (hold, gap)
+    }
+
     /// Longest single click hold that is replayed; longer recorded holds are shortened to this.
     public static let maxClickHold = 30.0
 

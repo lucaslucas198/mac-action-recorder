@@ -223,4 +223,18 @@ final class TimelineFidelityTests: XCTestCase {
         XCTAssertEqual(recording.actions.count, 1)
         XCTAssertEqual(recording.actions[0].delay, 0.6, accuracy: 1e-9)
     }
+
+    func testPressTimingForSingleAndDoubleClicks() {
+        let none = PlaybackTiming.pressTiming(count: 1, recorded: nil, clickHold: 0.01, doubleClickGap: 0.03)
+        XCTAssertEqual(none.hold, 0.01, accuracy: 1e-9)
+        let single = PlaybackTiming.pressTiming(count: 1, recorded: 0.079, clickHold: 0.01, doubleClickGap: 0.03)
+        XCTAssertEqual(single.hold, 0.079, accuracy: 1e-9)
+        // Double click recorded over 0.2 s: two short presses, the rest is the gap, total kept.
+        let double = PlaybackTiming.pressTiming(count: 2, recorded: 0.2, clickHold: 0.01, doubleClickGap: 0.03)
+        XCTAssertEqual(double.hold, 0.01, accuracy: 1e-9)
+        XCTAssertEqual(2 * double.hold + double.gap, 0.2, accuracy: 1e-9)
+        // A very slow "double click" still keeps the gap inside the double-click time.
+        let slow = PlaybackTiming.pressTiming(count: 2, recorded: 3, clickHold: 0.01, doubleClickGap: 0.03)
+        XCTAssertLessThanOrEqual(slow.gap, 0.4)
+    }
 }
