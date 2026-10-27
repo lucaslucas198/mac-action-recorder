@@ -56,7 +56,29 @@ enum Screenshotter {
             Shot(name: "05-setup-finished-dark", size: CGSize(width: 1040, height: 780), dark: true,
                  prepare: { main(true, onSetup: true, completed: false)(); setup.simulateForScreenshots(step: nil, done: SetupStep.allCases, finished: true, installed: true) },
                  view: mainView),
-            Shot(name: "10-main", size: CGSize(width: 1040, height: 780), dark: false, prepare: main(false), view: mainView),
+            Shot(name: "06-setup-permissions-needed", size: CGSize(width: 1040, height: 780), dark: false,
+                 prepare: {
+                     main(true, onSetup: true, completed: false)()
+                     setup.simulateForScreenshots(step: nil, done: [], finished: false, installed: true)
+                     model.setPermissionsForScreenshots(accessibility: false, inputMonitoring: false)
+                 },
+                 view: mainView),
+            Shot(name: "07-setup-one-permission", size: CGSize(width: 1040, height: 780), dark: false,
+                 prepare: {
+                     main(true, onSetup: true, completed: false)()
+                     setup.simulateForScreenshots(step: nil, done: [], finished: false, installed: true)
+                     model.setPermissionsForScreenshots(accessibility: true, inputMonitoring: false)
+                 },
+                 view: mainView),
+            Shot(name: "08-main-permission-banner", size: CGSize(width: 1040, height: 780), dark: false,
+                 prepare: {
+                     main(false)()
+                     model.setPermissionsForScreenshots(accessibility: false, inputMonitoring: false)
+                 },
+                 view: mainView),
+            Shot(name: "10-main", size: CGSize(width: 1040, height: 780), dark: false,
+                 prepare: { main(false)(); model.setPermissionsForScreenshots(accessibility: true, inputMonitoring: true) },
+                 view: mainView),
             Shot(name: "11-main-smallest", size: CGSize(width: 960, height: 700), dark: false, prepare: main(false), view: mainView),
             Shot(name: "12-main-large", size: CGSize(width: 1440, height: 900), dark: false, prepare: main(false), view: mainView),
             Shot(name: "13-main-dark", size: CGSize(width: 1040, height: 780), dark: true, prepare: main(false), view: mainView),
@@ -88,6 +110,7 @@ enum Screenshotter {
                 defer: false
             )
             window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: shot.dark ? .darkAqua : .aqua)
             window.title = shot.name
             let host = NSHostingView(rootView: shot.view().frame(width: shot.size.width, height: shot.size.height))
             window.contentView = host

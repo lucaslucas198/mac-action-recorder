@@ -229,7 +229,7 @@ struct WelcomeView: View {
         StepCard(
             number: 2,
             title: "Allow keyboard and mouse access",
-            done: model.inputMonitoringGranted && model.accessibilityGranted
+            done: setup.isDone && !setup.isWorking && model.inputMonitoringGranted && model.accessibilityGranted
         ) {
             if !setup.isDone || setup.isWorking {
                 Label("Finish step 1 first. Permissions switched on before that would have to be switched on again.", systemImage: "hourglass")
@@ -545,12 +545,16 @@ private struct HomePage: View {
                 endPoint: .bottomTrailing
             )
             // A soft light behind the logo that slowly breathes.
-            Circle()
-                .fill(Color.white.opacity(glow ? 0.16 : 0.08))
-                .frame(width: 420, height: 420)
-                .blur(radius: 60)
-                .offset(y: -60)
-                .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: glow)
+            RadialGradient(
+                colors: [Color.white.opacity(glow ? 0.20 : 0.10), Color.white.opacity(0)],
+                center: .center,
+                startRadius: 10,
+                endRadius: 300
+            )
+            .frame(width: 600, height: 600)
+            .offset(y: -70)
+            .allowsHitTesting(false)
+            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: glow)
 
             VStack(spacing: 0) {
                 Spacer()

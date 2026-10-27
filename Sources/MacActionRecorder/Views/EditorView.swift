@@ -289,7 +289,7 @@ struct ActionRow: View {
             Text("\(index + 1)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
+                .frame(width: 30, alignment: .trailing)
             Image(systemName: symbol)
                 .frame(width: 18)
                 .foregroundStyle(.secondary)

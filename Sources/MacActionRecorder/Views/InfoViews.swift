@@ -43,7 +43,7 @@ struct RecordingInfoView: View {
 
                 if model.screenMismatch, let recorded = recording.recordedScreen {
                     Label(
-                        "Recorded on a \(Int(recorded.width))×\(Int(recorded.height)) display. The main display is different now, so clicks may land in the wrong place.",
+                        "Recorded on a " + String(Int(recorded.width)) + "×" + String(Int(recorded.height)) + " display. The main display is different now, so clicks may land in the wrong place.",
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.caption)
@@ -232,20 +232,22 @@ struct PlaybackSettingsView: View {
                 GridRow {
                     label("Speed")
                     HStack(spacing: 8) {
+                        // A custom speed shows no highlighted preset; the field on the right shows it.
                         Picker("Speed", selection: presetBinding) {
                             ForEach(SpeedPreset.all) { preset in
                                 Text(preset.label).tag(preset.value)
                             }
-                            Text("Custom").tag(-1.0)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .fixedSize()
+                        .help("Choose a preset, or type any speed in the box")
                         TextField("1.0", value: $model.speed, format: .number.precision(.fractionLength(0...2)))
                             .frame(width: 56)
                             .textFieldStyle(.roundedBorder)
                             .multilineTextAlignment(.trailing)
                             .onSubmit { model.speed = PlaybackTiming.clampSpeed(model.speed) }
+                            .help("Custom speed, from 0.05× to 20×")
                         Text("×")
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 0)
@@ -255,31 +257,40 @@ struct PlaybackSettingsView: View {
                     label("Repeat")
                     HStack(spacing: 10) {
                         Picker("Repeat", selection: $model.repeatMode) {
-                            ForEach(RepeatMode.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
+                            Text("Once").tag(RepeatMode.once)
+                            Text("Several times").tag(RepeatMode.times)
+                            Text("Until stopped").tag(RepeatMode.infinite)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .fixedSize()
-
-                        if model.repeatMode == .times {
-                            Stepper(value: $model.repeatCount, in: 1...100_000) {
-                                Text("\(model.repeatCount) times")
-                                    .monospacedDigit()
+                        Spacer(minLength: 0)
+                    }
+                }
+                if model.repeatMode != .once {
+                    GridRow {
+                        Color.clear.frame(width: 48, height: 1)
+                        HStack(spacing: 8) {
+                            if model.repeatMode == .times {
+                                Stepper(value: $model.repeatCount, in: 1...100_000) {
+                                    Text("\(model.repeatCount) times")
+                                        .monospacedDigit()
+                                }
+                                .fixedSize()
+                                Text("·")
+                                    .foregroundStyle(.secondary)
                             }
-                        }
-                        if model.repeatMode != .once {
-                            Text("Wait")
+                            Text("wait")
                                 .foregroundStyle(.secondary)
                             TextField("0", value: $model.loopDelay, format: .number.precision(.fractionLength(0...2)))
                                 .frame(width: 52)
                                 .textFieldStyle(.roundedBorder)
                                 .multilineTextAlignment(.trailing)
-                            Text("s between")
+                            Text("seconds between repeats")
                                 .foregroundStyle(.secondary)
+                                .fixedSize()
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
                     }
                 }
                 GridRow {

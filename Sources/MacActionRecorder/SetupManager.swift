@@ -72,16 +72,30 @@ final class SetupManager: ObservableObject {
     /// needed and starts what can start by itself.
     func launchCheck(model: AppModel) {
         guard InstallDoctor.isAppBundle else { return }
+        let defaults = UserDefaults.standard
         if isContinuing {
             model.showSetupScreen()
+            if InstallDoctor.needsSetup {
+                // The reopened copy is still not installed and signed: replacing the app did not
+                // work. Stop here instead of trying again and again.
+                defaults.removeObject(forKey: SetupManager.continuationKey)
+                defaults.removeObject(forKey: SetupManager.completedKey)
+                phase = .failed("The app in Applications could not be replaced with the prepared copy (" + InstallDoctor.selfPath + "). Quit the app, drag it from the disk image onto Applications yourself and choose Replace, then open it from Applications.")
+                return
+            }
             continueAfterReopen()
         } else if InstallDoctor.needsSetup {
-            // A returning user who opened a new download: finish it without asking again.
-            if model.settings.hasCompletedWelcome {
+            // A returning user who opened a new download: finish it without asking again, but only
+            // once for the same copy, so a setup that cannot succeed never repeats by itself.
+            let attemptKey = "autoSetupAttempt"
+            let thisCopy = InstallDoctor.selfPath + "|" + InstallDoctor.requirement
+            if model.settings.hasCompletedWelcome && defaults.string(forKey: attemptKey) != thisCopy {
+                defaults.set(thisCopy, forKey: attemptKey)
                 model.showSetupScreen()
                 run()
             } else {
                 model.showingWelcome = true
+                if model.settings.hasCompletedWelcome { model.welcomeStartsOnSetup = true }
             }
         } else {
             quietMaintenance(model: model)

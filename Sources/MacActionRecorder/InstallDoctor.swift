@@ -17,6 +17,10 @@ enum InstallDoctor {
     private static let grantedRequirementKey = "grantedSignatureRequirement"
     private static let permissionCleanupDoneKey = "permissionEntriesCleanedOnce"
 
+    /// Set when this copy quits at launch because another copy is already running. It then saves
+    /// nothing, so it cannot overwrite what the other copy saved.
+    static var quittingAsDuplicate = false
+
     static var selfURL: URL { return Bundle.main.bundleURL.standardizedFileURL }
     static var selfPath: String { return selfURL.path }
     static var home: String { return NSHomeDirectory() }
@@ -86,6 +90,7 @@ enum InstallDoctor {
         )
         for other in others {
             if !Installation.shouldKeepSelf(me, over: describe(other), home: home) {
+                quittingAsDuplicate = true
                 Platform.activate(other)
                 NSApp.terminate(nil)
                 return true

@@ -1477,7 +1477,17 @@ final class AppModel: ObservableObject {
         lastSafetyStop = safetyStop
     }
 
+    /// Screenshot run only: shows the permissions as given and stops checking the real ones.
+    func setPermissionsForScreenshots(accessibility: Bool, inputMonitoring: Bool) {
+        permissionTimer?.invalidate()
+        permissionTimer = nil
+        rememberedGrant = true
+        accessibilityGranted = accessibility
+        inputMonitoringGranted = inputMonitoring
+    }
+
     func shutdown() {
+        if InstallDoctor.quittingAsDuplicate { return }
         if status.isRecordingPhase {
             stopRecording()
         }
