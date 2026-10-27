@@ -32,7 +32,17 @@ jobs:
         run: swift build
 
       - name: Run unit tests
-        run: swift test
+        run: |
+          set +e
+          swift test 2>&1 | tee test-output.txt
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Failures as annotations, so they can be read without the full log.
+            grep -E "error:|: failed|Test Case .* failed" test-output.txt | head -50 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          fi
+          exit "$status"
 
   # Builds the Windows app, runs the tests, and exercises it on a real Windows machine:
   # a start-up check, a real keyboard-and-mouse record/replay self-test, and screenshots of every screen.

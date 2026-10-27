@@ -151,8 +151,10 @@ final class TimelineFidelityTests: XCTestCase {
         click.modifiers = [.shift]
         let (performer, took) = play([click])
         XCTAssertEqual(performer.performed.map { $0.kind }, [.mouseDown, .mouseUp])
-        XCTAssertEqual(performer.performed.map { $0.button }, [.right, .right])
-        XCTAssertEqual(performer.performed.map { $0.modifiers }, [[.shift], [.shift]])
+        let expectedButtons: [MouseButton?] = [.right, .right]
+        XCTAssertEqual(performer.performed.map { $0.button }, expectedButtons)
+        let expectedModifiers: [KeyModifiers?] = [[.shift], [.shift]]
+        XCTAssertEqual(performer.performed.map { $0.modifiers }, expectedModifiers)
         XCTAssertEqual(performer.performed[0].x, 5)
         XCTAssertGreaterThanOrEqual(took, 0.39)
     }

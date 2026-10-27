@@ -229,7 +229,9 @@ public enum RecordingBuilder {
                         assembler.extendLast(to: event.time)
                         assembler.actions[position].duration = assembler.lastSpan
                     } else {
-                        assembler.append(.text(characters), start: event.time, end: event.time)
+                        var text = MacroAction.text(characters)
+                        text.duration = 0
+                        assembler.append(text, start: event.time, end: event.time)
                     }
                 } else {
                     guard options.recordShortcuts else { break }
