@@ -366,7 +366,15 @@ The results of the last CI run (pictures and reports) are in the [`ci-screenshot
 
 From the CI input test on shared GitHub macOS 26 virtual machines (not a physical Mac). The machines are sometimes heavily loaded, so results vary from run to run; each line is one run.
 
-MEASURED_TIMING_PLACEHOLDER
+| Code version | Recording (largest error) | Playback at 1× (largest difference per run) | Playback at 2× |
+| --- | --- | --- | --- |
+| Start of this work (`fc9d320`) | 85.1 ms (click hold not kept) | not measured | not measured |
+| Click hold and typing pace kept, gaps still slept one by one (`650bdeb`) | 1.5 ms | 202.9 ms | 176.3 ms |
+| Timeline scheduling, checks 20 ms early (`b89d3e9`) | 29.6 ms | 47.6 ms | 52.2 ms |
+| Same, three runs at 1× (`adb0cc1`) | 3.9 ms | 33.6, 53.9, 95.3 ms (median 53.9) | 53.5 ms |
+| No main-thread waits during playback (`d6d5ec0`, current) | 6.2 ms | 12.0, 54.3, 226.6 ms (median 54.3) | 42.8 ms |
+
+In the 226.6 ms run, the machine woke playback late in the middle of typing; because that was more than 0.15 s behind, the rest of the macro continued from there (by design, instead of rushing the next steps). The test also logs when the engine handed each step to macOS and when macOS passed it on: macOS passed events on within about 1–10 ms; the remaining differences come from when the virtual machine woke the playback thread. **Not measured:** a physical Mac, where this is expected to be lower but cannot be confirmed from here.
 
 What the numbers mean: *recording* is how far the recorded timeline (click, first letter, Return) is from when the input was really sent; *playback* is how far the replayed presses are from the recorded timeline. On a loaded virtual machine the system sometimes wakes the app 50–300 ms late; one late wake-up delays only that one step, because every later step is scheduled on the timeline.
 
