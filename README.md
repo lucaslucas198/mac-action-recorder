@@ -334,6 +334,17 @@ The tests cover: serialization and deserialization, action ordering, timestamp a
 
 They do **not** cover the macOS-specific parts (event taps, posting events, permissions, the SwiftUI interface). Those need manual testing; see the checklist below.
 
+CI also starts the built app with a few test-only options. They are meant for a throw-away CI machine, not your Mac:
+
+| Option | What it does |
+| --- | --- |
+| `--screenshots <folder>` | Draws the main screens with made-up sample data to PNG files and quits. |
+| `--selftest-install <folder>` | Ejects mounted Mac Action Recorder disk images, signs test copies, runs the swap and reopen helpers, moves a test copy to the Trash, opens a second copy, and runs `tccutil reset` for this app (which clears its permission switches). |
+| `--selftest-setup <report file>` | Runs the whole setup by itself, including installing into `/Applications`. |
+| `--print-version` | Prints the version and quits. |
+
+The results of the last CI run (pictures and reports) are in the [`ci-screenshots-mac`](https://github.com/lucaslucas198/mac-action-recorder/tree/ci-screenshots-mac) branch.
+
 ### Verification status
 
 | Item | Status |
