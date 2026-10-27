@@ -8,12 +8,56 @@ import MacActionRecorderCore
 enum AIAssistantError: LocalizedError {
     case unavailable(String)
     case emptyReply
+    case timedOut(Int)
+    case busy
 
     var errorDescription: String? {
         switch self {
         case .unavailable(let reason): return reason
         case .emptyReply: return "The model returned an empty answer. Try again."
+        case .timedOut(let seconds): return "The on-device model did not answer within \(seconds) seconds, so the request was stopped. Try again; the first request after starting the Mac is the slowest."
+        case .busy: return "The on-device model is still working on another request. Wait for it to finish."
         }
+    }
+}
+
+/// Lets the cancel handler reach the request that is running.
+private final class ResumerHolder<T> {
+    private let lock = NSLock()
+    private var value: OnceResumer<T>?
+
+    func set(_ resumer: OnceResumer<T>) {
+        lock.lock()
+        value = resumer
+        lock.unlock()
+    }
+
+    func get() -> OnceResumer<T>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
+/// Resumes a continuation exactly once, whichever of the answer, the time limit or a cancel comes first.
+private final class OnceResumer<T> {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    var task: Task<Void, Never>?
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    @discardableResult
+    func resume(_ result: Result<T, Error>) -> Bool {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        guard let pending = pending else { return false }
+        pending.resume(with: result)
+        return true
     }
 }
 
@@ -148,19 +192,92 @@ enum AIAssistant {
         return firstLine.trimmingCharacters(in: CharacterSet(charactersIn: " \"'“”.\t"))
     }
 
-    private static func respond(instructions: String, prompt: String) async throws -> String {
+    /// Loads the model ahead of time so the first answer comes faster. Cheap to call more than once.
+    static func prewarm() {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            guard availability.isAvailable else { return }
+            let session = LanguageModelSession(instructions: reviewInstructions)
+            session.prewarm()
+            // Kept so the loaded model is not released straight away.
+            warmSession = session
+        }
+        #endif
+    }
+
+    private static var warmSession: Any?
+
+    /// Longest time one request may take before it is stopped.
+    static let timeLimit = 60
+
+    private static let gate = NSLock()
+    private static var running = 0
+
+    /// One request at a time: the on-device model answers one prompt at a time anyway, and a second
+    /// request would only wait behind the first.
+    private static func enter() throws {
+        gate.lock()
+        defer { gate.unlock() }
+        guard running == 0 else { throw AIAssistantError.busy }
+        running += 1
+    }
+
+    private static func leave() {
+        gate.lock()
+        running = max(0, running - 1)
+        gate.unlock()
+    }
+
+    private static func respond(instructions: String, prompt: String, maxTokens: Int = 600) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             guard availability.isAvailable else {
                 throw AIAssistantError.unavailable(availability.message)
             }
-            let session = LanguageModelSession(instructions: instructions)
-            let response = try await session.respond(to: prompt)
-            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty { throw AIAssistantError.emptyReply }
-            return text
+            try enter()
+            defer { leave() }
+            // Short prompts keep the answer fast and inside the model's context window.
+            let trimmed = String(prompt.prefix(6000))
+            return try await withTimeLimit(seconds: timeLimit) {
+                let session = LanguageModelSession(instructions: instructions)
+                // A low temperature keeps the strict line formats the parsers expect.
+                let options = GenerationOptions(temperature: 0.2, maximumResponseTokens: maxTokens)
+                let response = try await session.respond(to: trimmed, options: options)
+                let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.isEmpty { throw AIAssistantError.emptyReply }
+                return text
+            }
         }
         #endif
         throw AIAssistantError.unavailable(availability.message)
+    }
+
+    /// Runs `work`, but gives up after `seconds` or when the calling task is cancelled.
+    private static func withTimeLimit<T>(seconds: Int, _ work: @escaping () async throws -> T) async throws -> T {
+        let holder = ResumerHolder<T>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+                let once = OnceResumer(continuation)
+                holder.set(once)
+                once.task = Task {
+                    do {
+                        once.resume(.success(try await work()))
+                    } catch {
+                        once.resume(.failure(error))
+                    }
+                }
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+                    if once.resume(.failure(AIAssistantError.timedOut(seconds))) {
+                        once.task?.cancel()
+                    }
+                }
+            }
+        } onCancel: {
+            if let once = holder.get() {
+                once.task?.cancel()
+                once.resume(.failure(CancellationError()))
+            }
+        }
     }
 }

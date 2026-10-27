@@ -32,6 +32,12 @@ struct MacActionRecorderApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // CI only: draw the screens to image files and quit (see Screenshotter).
+        if let folder = Screenshotter.requestedFolder {
+            NSApp.setActivationPolicy(.regular)
+            DispatchQueue.main.async { Screenshotter.run(into: folder) }
+            return
+        }
         // Only one copy of the app may run. If another one should stay, this copy quits here.
         if InstallDoctor.resolveDuplicateInstancesAtLaunch() {
             return

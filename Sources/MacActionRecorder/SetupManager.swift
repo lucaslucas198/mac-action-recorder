@@ -320,6 +320,31 @@ final class SetupManager: ObservableObject {
         }
     }
 
+    // MARK: Screenshots
+
+    /// Shows a made-up moment of the setup, for the screenshot run in CI only.
+    func simulateForScreenshots(step: SetupStep?, done: [SetupStep], finished: Bool, installed: Bool) {
+        stopTicker()
+        plannedSteps = SetupStep.allCases
+        completed = done.map { CompletedStep(step: $0, seconds: 0.4 + Double($0.rawValue) * 0.3, note: nil) }
+        currentStep = step
+        isDone = installed
+        if let step = step {
+            phase = .running
+            stepElapsed = 3
+            progress = step.fraction(afterSeconds: 3)
+            liveLine = "Signing the app with \"Mac Action Recorder Local Signing\""
+        } else if finished {
+            phase = .finished
+            progress = 1
+            results = ["Ejected 3 old installer disks.", "Moved 1 other copy of the app to the Trash (from /Users/you/Downloads)."]
+        } else {
+            phase = .idle
+            progress = 0
+            results = []
+        }
+    }
+
     // MARK: Text
 
     static func describe(location: Installation.Location) -> String {

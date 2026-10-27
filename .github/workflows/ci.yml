@@ -163,7 +163,7 @@ jobs:
     needs: build-and-test
     runs-on: macos-26
     permissions:
-      contents: read
+      contents: write   # only used to publish screenshots to the ci-screenshots-mac branch on pushes to main
     steps:
       - uses: actions/checkout@v4
 
@@ -183,6 +183,36 @@ jobs:
           ./scripts/build_app.sh
         env:
           BUILD_NUMBER: ${{ github.run_number }}
+
+      - name: Screenshots of the Mac screens
+        continue-on-error: true
+        run: |
+          mkdir -p mac-shots
+          "build/Mac Action Recorder.app/Contents/MacOS/MacActionRecorder" --screenshots "$PWD/mac-shots" > mac-shots/app-output.txt 2>&1 &
+          pid=$!
+          for i in $(seq 1 180); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          kill "$pid" 2>/dev/null || true
+          ls -la mac-shots
+          cat mac-shots/report.txt || true
+
+      - name: Publish screenshots to the ci-screenshots-mac branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          [ -d mac-shots ] || exit 0
+          work="$RUNNER_TEMP/mac-shots-branch"
+          rm -rf "$work"
+          cp -R mac-shots "$work"
+          cd "$work"
+          git init -q -b ci-screenshots-mac
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Mac UI screenshots from CI run ${{ github.run_id }} (${{ github.sha }})"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots-mac
 
       - name: Make the disk image and the update zip
         run: |

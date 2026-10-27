@@ -42,6 +42,7 @@ struct MacroCheckSheet: View {
             }
         }
         .padding(20)
+        .onAppear { AIAssistant.prewarm() }
         .frame(minWidth: 620, idealWidth: 660, minHeight: 480, idealHeight: 700)
     }
 

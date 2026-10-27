@@ -1469,6 +1469,14 @@ final class AppModel: ObservableObject {
 
     // MARK: Shutdown
 
+    /// Puts sample macros in the list without saving anything. Used only by the screenshot run
+    /// in CI (`--screenshots`), never in normal use.
+    func loadForScreenshots(_ samples: [Recording], safetyStop: String?) {
+        recordings = samples
+        selectedID = samples.first?.id
+        lastSafetyStop = safetyStop
+    }
+
     func shutdown() {
         if status.isRecordingPhase {
             stopRecording()
