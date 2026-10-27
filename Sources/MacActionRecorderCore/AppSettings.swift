@@ -141,6 +141,10 @@ public struct AppSettings: Codable, Equatable {
     public var playbackCountdown = 3
     public var minActionDelay = 0.02
     public var typingCharDelay = 0.012
+    /// Replay each click with the hold time it was recorded with.
+    public var replayClickHold = true
+    /// Replay typed text at the pace it was typed instead of `typingCharDelay`.
+    public var replayTypingPace = true
     public var emergencyStop = HotKey.defaultEmergencyStop
     public var verifyForeground = true
     public var confirmBeforePlay = false
@@ -211,6 +215,8 @@ public struct AppSettings: Codable, Equatable {
         playbackCountdown = c.value(.playbackCountdown, playbackCountdown)
         minActionDelay = c.value(.minActionDelay, minActionDelay)
         typingCharDelay = c.value(.typingCharDelay, typingCharDelay)
+        replayClickHold = c.value(.replayClickHold, replayClickHold)
+        replayTypingPace = c.value(.replayTypingPace, replayTypingPace)
         emergencyStop = c.value(.emergencyStop, emergencyStop)
         verifyForeground = c.value(.verifyForeground, verifyForeground)
         confirmBeforePlay = c.value(.confirmBeforePlay, confirmBeforePlay)

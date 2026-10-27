@@ -831,6 +831,8 @@ final class AppModel: ObservableObject {
         config.countdown = settings.playbackCountdown
         config.minActionDelay = settings.minActionDelay
         config.typingCharDelay = settings.typingCharDelay
+        config.clickHoldAsRecorded = settings.replayClickHold
+        config.typingAsRecorded = settings.replayTypingPace
         if settings.verifyForeground, let target = recording.targetApp {
             config.requiredBundleID = target.bundleID
             config.requiredAppName = target.name

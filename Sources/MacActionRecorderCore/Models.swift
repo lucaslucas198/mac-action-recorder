@@ -81,7 +81,10 @@ public struct MacroAction: Codable, Identifiable, Equatable {
     public var modifiers: KeyModifiers?
     public var text: String?
 
-    // Wait.
+    /// For `wait`: how long to pause. For `click`: how long the button was held when recorded
+    /// (first press to last release for a double or triple click). For `text`: the time from the
+    /// first to the last typed character when recorded. Clicks and text without it use the
+    /// playback settings instead. Seconds at 1x.
     public var duration: Double?
 
     public init(
@@ -288,13 +291,17 @@ public struct Recording: Codable, Identifiable, Equatable {
         self.actions = actions
     }
 
-    /// Total recorded time at 1x: all delays plus explicit waits (typing time not included).
+    /// Total recorded time at 1x: all delays, explicit waits, and the recorded time clicks were
+    /// held and text took to type.
     public var originalDuration: Double {
         var total = 0.0
         for action in actions {
             total += action.delay
-            if action.kind == .wait {
-                total += action.duration ?? 0
+            switch action.kind {
+            case .wait, .click, .text:
+                total += max(0, action.duration ?? 0)
+            default:
+                break
             }
         }
         return total

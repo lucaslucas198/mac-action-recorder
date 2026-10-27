@@ -150,6 +150,12 @@ public enum RecordingValidator {
             }
         }
 
+        // Clicks and text may carry the time they took when recorded.
+        if action.kind == .click || action.kind == .text, let duration = action.duration,
+           !duration.isFinite || duration < 0 || duration > maxDelay {
+            fail("The recorded duration must be between 0 and \(Int(maxDelay)) seconds.")
+        }
+
         return issues
     }
 

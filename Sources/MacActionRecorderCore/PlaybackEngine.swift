@@ -6,6 +6,11 @@ import Foundation
 /// tests implement it with a recorder.
 public protocol ActionPerformer: AnyObject {
     /// Called on the engine's playback thread. Throw to abort playback with an error.
+    ///
+    /// For a `click`, `duration` is either nil (use the performer's own click timing) or the time,
+    /// already scaled for the playback speed, from the first press to the last release. Long
+    /// single-click holds arrive as a separate `mouseDown` and `mouseUp` instead, so a stop can
+    /// interrupt them.
     func perform(_ action: MacroAction) throws
     /// Called once when a run ends for any reason (finish, stop, failure) so the performer
     /// can release anything still held, such as a pressed mouse button.
@@ -307,7 +312,9 @@ public final class PlaybackEngine {
 
                     do {
                         if action.kind == .text {
-                            if !(try typeOut(text: action.text ?? "", run: run, config: config)) { return }
+                            if !(try typeOut(action: action, run: run, config: config)) { return }
+                        } else if action.kind == .click {
+                            if !(try performClick(action, run: run, config: config)) { return }
                         } else {
                             // Last check before touching the system: a stop that arrived while
                             // we were asleep must not let this action through.
@@ -348,11 +355,44 @@ public final class PlaybackEngine {
         finish(run, with: .finished)
     }
 
+    /// Single-click holds longer than this are played as press, interruptible wait, release.
+    static let splitHoldAbove = 0.25
+
+    /// Plays a click with the hold time it was recorded with (when known and switched on).
+    /// Returns false if playback was cancelled part-way.
+    private func performClick(_ action: MacroAction, run: Run, config: PlaybackConfig) throws -> Bool {
+        var click = action
+        guard let hold = PlaybackTiming.clickHold(for: action, config: config) else {
+            click.duration = nil
+            if !run.sleep(0) { return false }
+            try performer.perform(click)
+            return true
+        }
+        let count = max(1, min(3, action.clickCount ?? 1))
+        if count == 1 && hold > PlaybackEngine.splitHoldAbove {
+            let button = action.button ?? .left
+            var press = MacroAction(kind: .mouseDown, x: action.x, y: action.y, button: button)
+            press.modifiers = action.modifiers
+            var release = MacroAction(kind: .mouseUp, x: action.x, y: action.y, button: button)
+            release.modifiers = action.modifiers
+            if !run.sleep(0) { return false }
+            try performer.perform(press)
+            // If this wait is cut short by Stop, the performer's cleanup releases the button.
+            if !run.sleep(hold) { return false }
+            try performer.perform(release)
+            return true
+        }
+        click.duration = hold
+        if !run.sleep(0) { return false }
+        try performer.perform(click)
+        return true
+    }
+
     /// Types text one character at a time with interruptible gaps.
     /// Returns false if playback was cancelled part-way.
-    private func typeOut(text: String, run: Run, config: PlaybackConfig) throws -> Bool {
-        let characters = Array(text)
-        let gap = PlaybackTiming.typingDelay(config: config)
+    private func typeOut(action: MacroAction, run: Run, config: PlaybackConfig) throws -> Bool {
+        let characters = Array(action.text ?? "")
+        let gap = PlaybackTiming.typingDelay(for: action, config: config)
         for (offset, character) in characters.enumerated() {
             if !run.sleep(0) { return false }
             try performer.perform(MacroAction.text(String(character)))

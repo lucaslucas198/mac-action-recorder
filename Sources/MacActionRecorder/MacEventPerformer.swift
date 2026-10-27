@@ -66,7 +66,7 @@ final class MacEventPerformer: ActionPerformer {
         case .mouseDown:
             let button = action.button ?? .left
             let location = point(of: action)
-            try moveCursor(to: location)
+            try moveCursorAndSettle(to: location, settle: timing.settleBeforeClick)
             try post(mouseEvent(downType(for: button), at: location, button: button, clickState: 1, modifiers: action.modifiers ?? []))
             lock.lock()
             heldButtons[button] = location
@@ -127,17 +127,50 @@ final class MacEventPerformer: ActionPerformer {
 
         let modifiers = action.modifiers ?? []
         let t = timing
+        let (hold, gap) = MacEventPerformer.clickTiming(count: count, recorded: action.duration, timing: t)
 
-        try moveCursor(to: location)
-        Thread.sleep(forTimeInterval: t.settleBeforeClick) // let hover state settle before the press
+        try moveCursorAndSettle(to: location, settle: t.settleBeforeClick)
 
         for index in 1...count {
             try post(mouseEvent(downType(for: button), at: location, button: button, clickState: index, modifiers: modifiers))
-            Thread.sleep(forTimeInterval: t.clickHold)
+            Thread.sleep(forTimeInterval: hold)
             try post(mouseEvent(upType(for: button), at: location, button: button, clickState: index, modifiers: modifiers))
             if index < count {
-                Thread.sleep(forTimeInterval: t.doubleClickGap)
+                Thread.sleep(forTimeInterval: gap)
             }
+        }
+    }
+
+    /// How long each press is held and the gap between presses. With a recorded time (first press
+    /// to last release, already scaled for speed), a single click holds for exactly that long and a
+    /// double or triple click spreads it over its presses; otherwise the timing settings are used.
+    static func clickTiming(count: Int, recorded: Double?, timing t: InputTiming) -> (hold: Double, gap: Double) {
+        guard let total = recorded, total.isFinite, total > 0 else {
+            return (t.clickHold, t.doubleClickGap)
+        }
+        if count <= 1 {
+            return (min(total, PlaybackTiming.maxClickHold), t.doubleClickGap)
+        }
+        let presses = Double(count)
+        // Keep each press short and give the rest to the gaps, which is how a quick double-click
+        // looks; the gaps stay well inside the system's double-click time.
+        let hold = min(t.clickHold, total / (2 * presses - 1))
+        let gap = min(0.4, max(0.005, (total - presses * hold) / (presses - 1)))
+        return (max(0.001, hold), gap)
+    }
+
+    /// Moves the pointer to `location` and, if it was somewhere else, waits `settle` seconds so the
+    /// app under it can show its hover state before a press. No wait when it is already there.
+    private func moveCursorAndSettle(to location: CGPoint, settle: Double) throws {
+        let alreadyThere: Bool
+        if let current = Platform.pointerLocation() {
+            alreadyThere = hypot(current.x - location.x, current.y - location.y) < 0.5
+        } else {
+            alreadyThere = false
+        }
+        try moveCursor(to: location)
+        if !alreadyThere && settle > 0 {
+            Thread.sleep(forTimeInterval: settle)
         }
     }
 

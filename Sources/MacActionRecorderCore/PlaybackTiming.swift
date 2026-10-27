@@ -26,6 +26,10 @@ public struct PlaybackConfig: Equatable {
     public var range: Range<Int>?
     /// The first this-many actions of the played section run in the first repetition only.
     public var prefixCount: Int = 0
+    /// Hold each click's button down as long as it was held when recorded (scaled by speed).
+    public var clickHoldAsRecorded = true
+    /// Type recorded text at the pace it was typed (scaled by speed) instead of `typingCharDelay`.
+    public var typingAsRecorded = true
 
     public init() {}
 }
@@ -113,6 +117,32 @@ public enum PlaybackTiming {
         return max(scaled, max(0, config.minTypingCharDelay))
     }
 
+    /// Seconds between the characters of this text action: its recorded pace spread evenly over
+    /// the characters when `typingAsRecorded` is on and the pace is known, otherwise
+    /// `typingDelay`. Never faster than `minTypingCharDelay`.
+    public static func typingDelay(for action: MacroAction, config: PlaybackConfig) -> Double {
+        let count = (action.text ?? "").count
+        guard config.typingAsRecorded, count > 1, let recorded = action.duration, recorded.isFinite, recorded > 0 else {
+            return typingDelay(config: config)
+        }
+        let speed = clampSpeed(config.speed)
+        let gap = recorded / Double(count - 1) / speed
+        return max(gap, max(0, config.minTypingCharDelay))
+    }
+
+    /// Longest single click hold that is replayed; longer recorded holds are shortened to this.
+    public static let maxClickHold = 30.0
+
+    /// How long to hold the button for this click at the configured speed, or nil to use the
+    /// performer's own click timing (no recorded hold, or the option is off). For a double or
+    /// triple click this is the whole time from the first press to the last release.
+    public static func clickHold(for action: MacroAction, config: PlaybackConfig) -> Double? {
+        guard action.kind == .click, config.clickHoldAsRecorded,
+              let recorded = action.duration, recorded.isFinite, recorded > 0 else { return nil }
+        let speed = clampSpeed(config.speed)
+        return min(recorded, maxClickHold) / speed
+    }
+
     /// Estimated duration of one pass over `actions` (excludes time the system takes to post events).
     public static func estimatedDuration(of actions: [MacroAction], config: PlaybackConfig) -> Double {
         var total = 0.0
@@ -120,7 +150,10 @@ public enum PlaybackTiming {
             total += scaledDelay(for: action, config: config)
             if action.kind == .text {
                 let count = max(0, (action.text ?? "").count - 1)
-                total += Double(count) * typingDelay(config: config)
+                total += Double(count) * typingDelay(for: action, config: config)
+            }
+            if let hold = clickHold(for: action, config: config) {
+                total += hold
             }
         }
         return total

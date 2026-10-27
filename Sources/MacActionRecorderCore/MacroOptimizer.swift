@@ -181,6 +181,10 @@ extension Recording {
                       let first = actions[index - 1].text, let second = actions[index].text,
                       first.count + second.count <= RecordingValidator.maxText else { continue }
                 actions[index - 1].text = first + second
+                // The gap between the chunks is dropped; the typing time of both is kept.
+                if actions[index - 1].duration != nil || actions[index].duration != nil {
+                    actions[index - 1].duration = (actions[index - 1].duration ?? 0) + (actions[index].duration ?? 0)
+                }
                 actions.remove(at: index)
                 changed = true
             }

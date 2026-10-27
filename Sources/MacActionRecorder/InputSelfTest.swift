@@ -108,7 +108,8 @@ enum InputSelfTest {
         }
         let actions = RecordingBuilder.build(events: output.events, options: options)
         for (index, action) in actions.enumerated() {
-            log(String(format: "  %2d  +%.3f s  %@", index + 1, action.delay, ActionDescriber.describe(action)))
+            let took = action.duration.map { String(format: ", took %.3f s", $0) } ?? ""
+            log(String(format: "  %2d  +%.3f s  %@%@", index + 1, action.delay, ActionDescriber.describe(action), took))
         }
 
         let click = actions.first { $0.kind == .click }
@@ -125,19 +126,20 @@ enum InputSelfTest {
         check(output.targetApp?.bundleID == "com.apple.TextEdit", "TextEdit was recorded as the target app")
         check(output.targetWindow != nil, "the TextEdit window position was saved")
 
-        // Recording accuracy: the gap between the click and the first letter, and between the last
-        // letter and Return, as sent and as recorded.
+        // Recording accuracy: when the first letter and Return happened after the click press, as
+        // sent and as rebuilt from the recording (delays plus the time each action took).
+        let starts = timeline(of: actions)
         if sent.count == 7, let clickIndex = actions.firstIndex(where: { $0.kind == .click }),
            clickIndex + 2 < actions.count {
-            let sentClickToText = sent[1] - sent[0]
-            let recordedClickToText = actions[clickIndex + 1].delay
-            let sentTextToReturn = sent[6] - sent[5]
-            let recordedTextToReturn = actions[clickIndex + 2].delay
-            let worst = max(abs(sentClickToText - recordedClickToText), abs(sentTextToReturn - recordedTextToReturn))
-            log(String(format: "Click to first letter: sent %.4f s, recorded %.4f s", sentClickToText, recordedClickToText))
-            log(String(format: "Last letter to Return: sent %.4f s, recorded %.4f s", sentTextToReturn, recordedTextToReturn))
+            let sentToText = sent[1] - sent[0]
+            let recordedToText = starts[clickIndex + 1] - starts[clickIndex]
+            let sentToReturn = sent[6] - sent[0]
+            let recordedToReturn = starts[clickIndex + 2] - starts[clickIndex]
+            let worst = max(abs(sentToText - recordedToText), abs(sentToReturn - recordedToReturn))
+            log(String(format: "Click to first letter: sent %.4f s, recorded %.4f s", sentToText, recordedToText))
+            log(String(format: "Click to Return: sent %.4f s, recorded %.4f s", sentToReturn, recordedToReturn))
             log(String(format: "Largest timing error while recording: %.1f ms", worst * 1000))
-            check(worst <= 0.02, "gaps were recorded within 20 ms of when the input was really sent")
+            check(worst <= 0.02, "the recorded timeline is within 20 ms of when the input was really sent")
         }
 
         // TextEdit may capitalise the first letter by itself, so compare without case.
@@ -148,7 +150,7 @@ enum InputSelfTest {
         // 3. Replay at 1× and 2×, measuring how long it takes.
         var recording = Recording(name: "selftest", targetApp: output.targetApp, recordedScreen: Platform.primaryDisplaySize(), targetWindow: output.targetWindow, actions: actions)
         recording.actions = actions
-        let recordedSpan = actions.reduce(0) { $0 + $1.delay }
+        let recordedSpan = recording.originalDuration
         for speed in [1.0, 2.0] {
             Platform.onMain { Platform.activate(app) }
             Thread.sleep(forTimeInterval: 0.8)
@@ -156,6 +158,8 @@ enum InputSelfTest {
             var config = PlaybackConfig()
             config.speed = speed
             config.requiredBundleID = "com.apple.TextEdit"
+            let probe = PlaybackProbe()
+            probe.start()
             let started = Date()
             do {
                 try engine.start(recording: recording, config: config)
@@ -171,9 +175,12 @@ enum InputSelfTest {
                 Thread.sleep(forTimeInterval: 0.02)
             }
             let took = Date().timeIntervalSince(started)
-            log(String(format: "Playback at %.0f×: %@ in %.3f s (recorded gaps add up to %.3f s, expected about %.3f s plus typing)", speed, String(describing: state), took, recordedSpan, recordedSpan / speed))
+            log(String(format: "Playback at %.0f×: %@ in %.3f s (recorded length %.3f s, so about %.3f s expected)", speed, String(describing: state), took, recordedSpan, recordedSpan / speed))
             check(state == .finished, "playback at \(Int(speed))× finished")
-            Thread.sleep(forTimeInterval: 0.6)
+            Thread.sleep(forTimeInterval: 0.3)
+            let seen = probe.stop()
+            measurePlayback(seen: seen, actions: actions, speed: speed)
+            Thread.sleep(forTimeInterval: 0.3)
         }
 
         let after = documentText(of: app) ?? ""
@@ -183,6 +190,46 @@ enum InputSelfTest {
         // Leave TextEdit without asking to save.
         _ = Platform.onMain { app.forceTerminate() }
         finish(folder)
+    }
+
+    // MARK: Timeline
+
+    /// Start time of each action, rebuilt from its delay and the time the action before it took.
+    private static func timeline(of actions: [MacroAction]) -> [Double] {
+        var starts: [Double] = []
+        var clock = 0.0
+        for action in actions {
+            clock += action.delay
+            starts.append(clock)
+            if action.kind == .wait || action.kind == .click || action.kind == .text {
+                clock += action.duration ?? 0
+            }
+        }
+        return starts
+    }
+
+    /// Compares when playback really pressed the button, typed the first letter and pressed Return
+    /// with the recorded timeline divided by the speed.
+    private static func measurePlayback(seen: [PlaybackProbe.Seen], actions: [MacroAction], speed: Double) {
+        let starts = timeline(of: actions)
+        guard let clickIndex = actions.firstIndex(where: { $0.kind == .click }), clickIndex + 2 < actions.count,
+              let press = seen.first(where: { $0.type == .leftMouseDown }) else {
+            check(false, "playback at \(Int(speed))× was observed (\(seen.count) events seen)")
+            return
+        }
+        let keys = seen.filter { $0.type == .keyDown && $0.time > press.time }
+        guard let firstLetter = keys.first, let returnKey = keys.last(where: { $0.keyCode == 36 }) else {
+            check(false, "playback at \(Int(speed))× typed and pressed Return (\(keys.count) key presses seen)")
+            return
+        }
+        let expectToText = (starts[clickIndex + 1] - starts[clickIndex]) / speed
+        let expectToReturn = (starts[clickIndex + 2] - starts[clickIndex]) / speed
+        let gotToText = firstLetter.time - press.time
+        let gotToReturn = returnKey.time - press.time
+        let worst = max(abs(expectToText - gotToText), abs(expectToReturn - gotToReturn))
+        log(String(format: "Playback at %.0f×: click to first letter %.4f s (recorded %.4f s), click to Return %.4f s (recorded %.4f s), largest difference %.1f ms",
+                   speed, gotToText, expectToText, gotToReturn, expectToReturn, worst * 1000))
+        check(worst <= 0.03, "playback at \(Int(speed))× followed the recorded timeline within 30 ms")
     }
 
     // MARK: Sending events like hardware does (no marker, so the recorder sees them)
@@ -238,5 +285,58 @@ enum InputSelfTest {
             if let text = findText(in: child, depth: depth + 1) { return text }
         }
         return nil
+    }
+}
+
+/// Watches every mouse press and key press (including the ones playback posts) with a listen-only
+/// tap on the main run loop, to measure when playback really sent them. Self-test only.
+final class PlaybackProbe {
+    struct Seen {
+        let time: Double
+        let type: CGEventType
+        let keyCode: Int
+    }
+
+    private let lock = NSLock()
+    private var seen: [Seen] = []
+    private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
+
+    func start() {
+        let callback: CGEventTapCallBack = { _, type, event, refcon in
+            if let refcon = refcon {
+                let probe = Unmanaged<PlaybackProbe>.fromOpaque(refcon).takeUnretainedValue()
+                probe.note(type: type, event: event)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+        let mask = EventTapSupport.mask(for: [.leftMouseDown, .leftMouseUp, .keyDown])
+        Platform.onMain {
+            if let installed = EventTapSupport.install(mask: mask, callback: callback, userInfo: Unmanaged.passUnretained(self).toOpaque()) {
+                tap = installed.tap
+                source = installed.source
+            }
+        }
+    }
+
+    private func note(type: CGEventType, event: CGEvent) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let code = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        lock.lock()
+        seen.append(Seen(time: now, type: type, keyCode: code))
+        lock.unlock()
+    }
+
+    func stop() -> [Seen] {
+        Platform.onMain {
+            if let tap = tap, let source = source {
+                EventTapSupport.remove(tap: tap, source: source)
+            }
+            tap = nil
+            source = nil
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        return seen
     }
 }

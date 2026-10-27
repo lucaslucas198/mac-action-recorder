@@ -113,6 +113,8 @@ public struct MoveThrottle {
 /// - consecutive typed characters become one text action
 /// - shortcuts and special keys become key actions (key-down + key-up = one press)
 /// - delays are the gaps between the end of one action and the start of the next
+/// - a click keeps how long the button was held, and text keeps how long it took to type, so
+///   playback can reproduce the recorded timeline
 public enum RecordingBuilder {
     /// A pause longer than this starts a new text action instead of extending the last one.
     public static let textRunGap = 2.0
@@ -162,14 +164,14 @@ public enum RecordingBuilder {
                        let lastPointX = last.x, let lastPointY = last.y,
                        hypot(lastPointX - event.x, lastPointY - event.y) <= clickSlop {
                         // Second (or third) click of a multi-click: upgrade the previous click.
-                        assembler.actions[assembler.actions.count - 1].clickCount = count
+                        let position = assembler.actions.count - 1
+                        assembler.actions[position].clickCount = count
                         assembler.extendLast(to: up.time)
+                        assembler.actions[position].duration = assembler.lastSpan
                     } else {
-                        assembler.append(
-                            round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers),
-                            start: event.time,
-                            end: up.time
-                        )
+                        var click = round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers)
+                        click.duration = roundMilliseconds(max(0, up.time - event.time))
+                        assembler.append(click, start: event.time, end: up.time)
                     }
                     lastX = up.x
                     lastY = up.y
@@ -225,6 +227,7 @@ public enum RecordingBuilder {
                         let position = assembler.actions.count - 1
                         assembler.actions[position].text = (last.text ?? "") + characters
                         assembler.extendLast(to: event.time)
+                        assembler.actions[position].duration = assembler.lastSpan
                     } else {
                         assembler.append(.text(characters), start: event.time, end: event.time)
                     }
@@ -281,6 +284,13 @@ public enum RecordingBuilder {
     private struct Assembler {
         var actions: [MacroAction] = []
         var lastEnd: Double?
+        var lastStart: Double?
+
+        /// Time from the start to the end of the last action, rounded to milliseconds.
+        var lastSpan: Double? {
+            guard let start = lastStart, let end = lastEnd else { return nil }
+            return RecordingBuilder.roundMilliseconds(max(0, end - start))
+        }
 
         mutating func append(_ action: MacroAction, start: Double, end: Double) {
             var next = action
@@ -290,6 +300,7 @@ public enum RecordingBuilder {
                 next.delay = 0
             }
             actions.append(next)
+            lastStart = start
             lastEnd = end
         }
 

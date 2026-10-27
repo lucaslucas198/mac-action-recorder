@@ -290,10 +290,16 @@ struct PlaybackSettingsTab: View {
                 Hint("These work only while recording or playing and need the Input Monitoring permission. The menu bar item always works as a fallback. The two shortcuts must be different.")
             }
 
+            Section("Match the recording") {
+                Toggle("Hold each click as long as it was held when recorded", isOn: $model.settings.replayClickHold)
+                Toggle("Type recorded text at the pace it was typed", isOn: $model.settings.replayTypingPace)
+                Hint("With both on, a macro replays on the same timeline it was recorded on (divided by the speed). Clicks and text you added by hand have no recorded timing and use the values below. Switch typing pace off to type recorded text quickly instead.")
+            }
+
             Section("Timing and reliability") {
                 SliderRow(title: "Minimum action delay", value: $model.settings.minActionDelay, range: 0...0.5)
                 SliderRow(title: "Delay per typed character", value: $model.settings.typingCharDelay, range: 0...0.2)
-                Hint("At speeds above 1×, clicks and key presses never wait less than the minimum action delay, and typing is never faster than the typing delay allows. Raise these if Discord drops input.")
+                Hint("At speeds above 1×, clicks and key presses never wait less than the minimum action delay. Typing uses the delay per character when typing pace is off, or for text without a recorded pace. Raise these if Discord drops input.")
                 SliderRow(title: "Pause before a click", value: $model.settings.inputTiming.settleBeforeClick, range: 0...0.3)
                 SliderRow(title: "Mouse button held down", value: $model.settings.inputTiming.clickHold, range: 0.001...0.2)
                 SliderRow(title: "Gap in a double-click", value: $model.settings.inputTiming.doubleClickGap, range: 0.005...0.3)
@@ -302,6 +308,8 @@ struct PlaybackSettingsTab: View {
                     model.settings.minActionDelay = AppSettings().minActionDelay
                     model.settings.typingCharDelay = AppSettings().typingCharDelay
                     model.settings.inputTiming = InputTiming()
+                    model.settings.replayClickHold = true
+                    model.settings.replayTypingPace = true
                 }
             }
         }

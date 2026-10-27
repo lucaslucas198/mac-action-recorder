@@ -13,6 +13,11 @@ extension Recording {
         for action in actions {
             if ids.contains(action.id) {
                 carry += action.delay
+                // Keep later actions on the recorded timeline: the time a deleted click was held or
+                // deleted text took to type becomes waiting time too. (A deleted wait is removed.)
+                if action.kind == .click || action.kind == .text {
+                    carry += max(0, action.duration ?? 0)
+                }
             } else {
                 var kept = action
                 kept.delay += carry
