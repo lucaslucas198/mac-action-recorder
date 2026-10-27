@@ -136,7 +136,25 @@ enum InstallSelfTest {
         log(String(format: "Reopen helper finished after %.2f s with status %d", waited2, reopen.status))
         check(waited2 >= 0.8 && reopen.status == 0, "the reopen helper waited for the old process to quit")
 
-        // 5. Spotlight and the permission reset command run without errors.
+        // 5. Other copies go to the Trash; the kept copy, the running copy and build output stay.
+        let stray = work.appendingPathComponent("Downloads/Mac Action Recorder.app")
+        try? fm.createDirectory(at: stray.deletingLastPathComponent(), withIntermediateDirectories: true)
+        _ = InstallDoctor.run("/usr/bin/ditto", [InstallDoctor.selfPath, stray.path])
+        _ = InstallDoctor.run("/usr/bin/mdimport", [stray.path, dest.path])
+        var moved: [String] = []
+        for _ in 0..<20 where moved.isEmpty {
+            Thread.sleep(forTimeInterval: 1)
+            moved = InstallDoctor.trashCopies(keeping: dest.path)
+        }
+        log("Moved to the Trash: \(moved)")
+        check(moved.contains { $0.hasSuffix("/Downloads/Mac Action Recorder.app") }, "a stray copy was moved to the Trash")
+        check(!fm.fileExists(atPath: stray.path), "the stray copy is gone from its folder")
+        check(fm.fileExists(atPath: dest.path), "the kept copy is still there")
+        check(fm.fileExists(atPath: InstallDoctor.selfPath), "the running copy is still there")
+        check(InstallDoctor.isSameItem("/System/Volumes/Data" + dest.path, dest.path) || !fm.fileExists(atPath: "/System/Volumes/Data" + dest.path),
+              "a firmlinked path counts as the same copy")
+
+        // 6. Spotlight and the permission reset command run without errors.
         let found = InstallDoctor.run("/usr/bin/mdfind", ["kMDItemCFBundleIdentifier == '\(Installation.bundleID)'"])
         log("mdfind status \(found.status): " + (found.output.flatMap { String(data: $0, encoding: .utf8) } ?? "").replacingOccurrences(of: "\n", with: " | "))
         check(found.status == 0, "Spotlight search runs")

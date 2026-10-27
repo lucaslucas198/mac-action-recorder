@@ -91,28 +91,34 @@ You download one file, drag one app, and the app's Welcome screen does the rest.
 
 ### Step by step
 
-1. **Download** `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest). It is in the **Assets** list at the bottom of the release. Do **not** use "Source code (zip)" or the green **Code > Download ZIP** button: those are the program's source files, not the app.
-2. **Open the downloaded file** (double-click it in Downloads). A window opens showing the app on the left, the *Applications* folder on the right, and an arrow between them.
-3. **Drag *Mac Action Recorder* onto *Applications*.** Then eject the disk image (the eject button next to it in the Finder sidebar).
-4. **Open it for the first time.** In Finder, open *Applications* and double-click *Mac Action Recorder*. macOS will very likely refuse with a message that it cannot verify the app. That is expected, because the app is not notarized (see [why](#code-signing-and-notarization)). Click **Done**, then:
+1. **Download** `MacActionRecorder-macOS.dmg` from the [latest release](https://github.com/lucaslucas198/mac-action-recorder/releases/latest). It is in the **Assets** list at the bottom of the release. Do **not** use "Source code (zip)": that is the program's source files, not the app.
+2. **Open the downloaded file.** A window shows the app, an arrow and the *Applications* folder.
+3. **Drag *Mac Action Recorder* onto *Applications*.** If Finder asks, choose **Replace**.
+4. **Open it from Applications.** The first time, macOS refuses with *"Apple could not verify…"*. That is expected (the app is not notarized, see [why](#code-signing-and-notarization)). Click **Done**, then:
    1. Open **System Settings > Privacy & Security** and scroll down to **Security**.
-   2. Click **Open Anyway** next to the message about Mac Action Recorder. (Apple says this button is available for about an hour after you try to open the app. If it is gone, try opening the app once more.)
-   3. Enter your password or use Touch ID, then click **Open Anyway** once more.
+   2. Click **Open Anyway** next to the message about Mac Action Recorder, enter your password or use Touch ID, and click **Open Anyway** again.
 
-   These are the steps in [Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac). You only do this once. Terminal alternative: `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"`, then open the app.
-5. **The Welcome window opens.** Go through it from top to bottom:
-   1. **Set Up This Mac.** The app moves itself to Applications if needed, signs itself with a certificate created on your Mac, and reopens. If macOS asks whether `codesign` may use a key, choose **Always Allow**. This step exists because macOS ties privacy permissions to the app's signature; without it, permissions stop working after every update.
-   2. **Allow Input Monitoring and Accessibility.** The buttons open the right System Settings pages. Switch **Mac Action Recorder** on in each list (use `+` and pick it from Applications if it is not listed). The checkmarks in the Welcome window turn green by themselves; if a switch is on but still says *Not granted*, click **Quit and Reopen**.
-   3. **Updates** (on by default) and the **AI helper** note need no action.
-6. **Click Enter.** The Welcome window closes and you are in the app. You can open it again any time from **Help > Welcome & Setup** or the menu bar item.
+   These are the steps in [Apple's guide](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac). Terminal alternative: `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"`.
+5. **Click Get Started.** The setup screen installs everything by itself and shows each step as it happens, with a progress bar, what it is doing right now, and how long each step took:
+   - closes any other copy of the app that is running,
+   - copies the app, signs it with a certificate made on your Mac (if macOS asks whether `codesign` may use a key, click **Always Allow**),
+   - puts it in Applications and reopens it from there,
+   - ejects old Mac Action Recorder disk images, moves other copies of the app to the Trash, and clears permission entries left by older versions.
+6. **Allow the two permissions.** Each has an **Open … Settings** button that opens the right list in System Settings. Switch **Mac Action Recorder** on. If it is not in the list, click **+**, choose *Applications > Mac Action Recorder* and click **Open**. If macOS offers **Quit & Reopen**, click it. The checkmarks turn green by themselves.
+7. **Click Enter.** You can open the setup screen again any time from **Help > Welcome & Setup** or the menu bar item.
 
-If you skip a Welcome step, nothing breaks: recording and playback simply stay unavailable until their permission is granted.
+Opening the app from the disk image directly also works: setup then copies it into Applications for you.
+
+**Installing a new version by hand** (instead of the built-in updater): repeat steps 1 to 4 and choose **Replace**. When the new copy opens it finishes its own setup (signing it with the same certificate as before), so the permissions you already switched on keep working, and the setup screen closes by itself.
+
+**Why one copy matters.** macOS ties the Input Monitoring and Accessibility switches to one copy of the app and its signature. Old disk images left open, or a second copy in Downloads, made macOS open the wrong copy, and each download had a different signature, so the switches stopped working. Since 0.6.0 the app keeps exactly one copy, the one in Applications, and signs it the same way every time.
 
 ### What gets installed, and what does not
 
 - The app itself (about a few MB) in `/Applications`.
 - Your settings and recordings in `~/Library/Application Support/Mac Action Recorder`.
-- A self-signed certificate named *Mac Action Recorder Local Signing* in your login keychain (created by *Set Up This Mac*). It is only used to sign this app on this Mac. You can delete it in Keychain Access.
+- A self-signed certificate named *Mac Action Recorder Local Signing* in your login keychain (created during setup). It is only used to sign this app on this Mac. You can delete it in Keychain Access.
+- Nothing else. Old copies of the app that setup finds are moved to the **Trash**, not deleted, so you can put them back.
 - The app downloads no dependencies, because it has none. The only network use is the optional update check.
 
 To uninstall: quit the app, drag it from Applications to the Trash, and delete the support folder above if you want your recordings gone. Remove the app from the Privacy lists in System Settings if you like.
@@ -151,14 +157,17 @@ macOS asks for two separate permissions. Enable **Mac Action Recorder** in both 
 
 | Permission | Needed for | What happens without it |
 | --- | --- | --- |
-| **Input Monitoring** | Recording, and the emergency-stop shortcut | Recording will not start |
+| **Input Monitoring** | Recording, and the emergency-stop and pause shortcuts | Recording will not start |
 | **Accessibility** | Playback (moving the pointer, clicking, typing) | Playback will not start |
 
-Steps:
+The easiest way is **Help > Welcome & Setup** (or **Fix Permissions…** in the orange bar): it shows both permissions with live status, buttons that open the right list, and numbered instructions.
 
-1. Open the app, then **Settings > Permissions & Privacy**. Each row shows whether the permission is granted. The page re-checks every couple of seconds.
-2. Click **Open System Settings**, switch the app on, and quit and reopen the app if macOS asks.
-3. If a permission shows as granted but still does not work, see [Troubleshooting](#troubleshooting).
+If a switch is on but the app still says *Not allowed*:
+
+1. Click **Quit and Reopen**. Input Monitoring often only takes effect after a restart.
+2. Still not working? Click **Repair…**. It removes this app's entries from both lists (`tccutil reset All io.github.macactionrecorder.app`, nothing else), then macOS asks again and you switch both on.
+
+The app also does step 2 by itself when it notices that its signature changed since the permissions were granted and they no longer work.
 
 ## Using it
 
@@ -335,7 +344,9 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
 | Welcome screen, Set Up This Mac, release-based update, local re-signing | **Compiles. Not run.** Whether permissions survive an update after local re-signing is the design intent, not an observed result. |
 | Check macro, Improve, Draft with AI, AI review, Show Clicks, Play Macro menu, permission rescue buttons | **Compiles.** Core rules have unit tests. The interface and the AI calls (Apple's Foundation Models) have not been exercised in the running app by me. |
-| Window follow, safety stop, bring-to-front, open-channel-first, Add and Pick on screen, new Settings tabs, Discord coach (0.5.0) | **Compiles, and the core rules have unit tests** (window shift and resize rules, every stop rule, prefix steps, settings, profile, new checks). **None of it has been run on a real Mac.** In particular untested: reading window positions, launching Discord, the Quick Switcher step, the screen picker overlay on multiple displays, and the layout at different window sizes. |
+| Window follow, safety stop, bring-to-front, open-channel-first, Add and Pick on screen, new Settings tabs, Discord coach (0.5.0) | **Compiles, and the core rules have unit tests** (window shift and resize rules, every stop rule, prefix steps, settings, profile, new checks). **None of it has been run on a real Mac.** In particular untested: reading window positions, launching Discord, the Quick Switcher step, and the screen picker overlay on multiple displays. |
+| Install and one-copy machinery (0.6.0) | **Run for real on a GitHub macOS 26 runner on every push** (`--selftest-install`, report in the `ci-screenshots-mac` branch): finds and ejects a mounted Mac Action Recorder disk image; signs a copy with a newly created local certificate (requirement `certificate leaf`, identical when signed again); the signed copy starts and passes `codesign --verify`; the swap helper waits for the old process, replaces the app and leaves nothing behind; the reopen helper waits; `mdfind` and `tccutil reset` run. The runner uses a throw-away keychain, so the macOS prompt a real Mac may show ("codesign wants to use a key") is **not** covered. Not run on a real Mac: the setup screen end to end, moving old copies to the Trash, and the one-copy check between two running copies. |
+| Layout (0.6.0) | **Checked in screenshots** that CI renders on every push (`--screenshots`, published to the `ci-screenshots-mac` branch): welcome, setup (start, running, finished, permissions needed), main window at 960×700, 1040×780 and 1440×900, dark mode, Check sheet, Add sheet, every Settings tab. They are drawn off screen, so window chrome, the Settings tab bar and animations are not shown. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):
@@ -350,15 +361,14 @@ Manual checklist (not done yet):
 
 ## Troubleshooting
 
-**"Recording needs the Input Monitoring permission" even though it is switched on.**
-Remove Mac Action Recorder from the Input Monitoring list (select it, click `−`), quit the app, reopen it, and add it again when prompted. This is common after rebuilding, because ad-hoc signatures change on every build.
+**The switch is on but the app says *Not allowed*, or the app is missing from the list.**
+Open **Help > Welcome & Setup**. Click **Quit and Reopen** first (Input Monitoring often needs a restart). If that does not help, click **Repair…**, then switch the app on again in both lists. If it is missing from a list, click **+**, choose *Applications > Mac Action Recorder*, and click **Open**. Make sure you open the copy in Applications; since 0.6.0 the app moves other copies to the Trash so there is only one.
 
-**"I switched it on but the app says I didn't."**
-macOS ties each permission to the app's code signature. Builds signed ad-hoc (the old default) get a new signature every time, so a rebuilt app no longer matches the switch you turned on. The build script now signs with a certificate it creates once in your login keychain (`scripts/ensure_signing_identity.sh`), which keeps the signature requirement the same across rebuilds. The first build after switching to it needs one fresh grant. If macOS asks whether `codesign` may use the key, choose **Always Allow**. The build prints the signature requirement it used; if it says `cdhash`, the local certificate could not be used and permissions will reset on every rebuild. Set `STABLE_SIGNING=0` to go back to ad-hoc signing.
-Also: after switching Input Monitoring on, use **Quit and Reopen**, and make sure you launch the same copy you granted (`/Applications`, not `build/`). The Start Recording button now tests for real instead of trusting the system's quick check, which can be out of date.
+**Quit and Reopen opened a different (older) copy, or two copies run at once.**
+Fixed in 0.6.0: only one copy runs (a newer or installed copy wins and the other quits), Quit and Reopen waits until the app has quit and then opens the copy in Applications, and old disk images are ejected. If you still see it, open **Help > Welcome & Setup** and click **Check for Old Copies Again**.
 
-**The app is not in the Privacy lists, or the switch is on but it still says Not granted.**
-Open Settings > Permissions & Privacy in the app. Click **Request** for the permission, or use **Show App in Finder** / **Copy App Path** and add the app with the `+` button (press `⌘⇧G` in the file picker and paste the path). If a grant seems stuck, use **Reset This App's Permissions**, request again, switch it on, then **Quit and Reopen**.
+**Every new download needs the permissions switched on again.**
+That happens when the app could not be signed on your Mac, so each download keeps its own changing signature. Setup tries again for each new version. If it keeps failing, see *setup fails* below.
 
 **Playback does nothing or only moves the pointer.**
 Check **Accessibility**. Same fix as above. Also check that the target app is not using Secure Input (a password field focused) and that the macro's coordinates are still valid.
@@ -375,8 +385,8 @@ It needs Input Monitoring. It also must include `⌃`, `⌥` or `⌘`. Change it
 **macOS says it cannot verify the app, or that it is damaged.**
 Expected for downloaded releases (not notarized). Follow step 4 of the [install steps](#step-by-step): System Settings > Privacy & Security > Open Anyway, or run `xattr -dr com.apple.quarantine "/Applications/Mac Action Recorder.app"`. If *Open Anyway* is missing, try opening the app again; it is only offered for about an hour after an attempt.
 
-**The Welcome window's *Set Up This Mac* step fails or loops.**
-It needs write access to `/Applications` (an administrator account) and permission to use the keychain. If it reports that no signing certificate could be created, the app still works, but macOS may forget its permissions after updates. You can also run `scripts/ensure_signing_identity.sh` from the source folder in Terminal to see why the certificate cannot be made.
+**Setup fails, or waits a long time at "Signing it for this Mac".**
+Signing creates a certificate in your login keychain and may make macOS ask whether `codesign` may use it: click **Always Allow** (enter your Mac password if asked). If no window appears, look behind other windows. After 30 seconds the setup screen offers **Continue Without Signing**: the app then works, but macOS may forget its permissions after the next update. Setup also needs write access to `/Applications` (an administrator account); otherwise it uses `~/Applications`. If replacing the app fails, setup stops and says so instead of trying again and again; drag the app from the disk image onto Applications yourself and choose Replace.
 
 **The app window disappeared.**
 Closing the window leaves the app running in the menu bar. Choose **Show Window** from the menu bar item. The window also hides itself during recording and playback if you left those options on.

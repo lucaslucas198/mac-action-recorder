@@ -162,19 +162,27 @@ enum InstallDoctor {
     /// a source checkout's build folder are left alone. Returns the paths that were moved.
     static func trashOtherCopies() -> [String] {
         guard isAppBundle, location.isInstalled else { return [] }
+        return trashCopies(keeping: selfPath)
+    }
+
+    /// The work of `trashOtherCopies`, keeping `keep`. The running copy is always kept as well.
+    static func trashCopies(keeping keep: String) -> [String] {
         let query = "kMDItemCFBundleIdentifier == '\(Installation.bundleID)'"
         guard let data = run("/usr/bin/mdfind", [query]).output,
               let text = String(data: data, encoding: .utf8) else { return [] }
         let found = text.split(separator: "\n").map { String($0) }
         let candidates = Installation.copiesToRemove(
             found: found,
-            keeping: selfPath,
+            keeping: keep,
             home: home,
             supportFolder: AppModel.supportDirectory.path
         )
         var moved: [String] = []
         for path in candidates {
             guard isOurApp(at: path), !isBuildOutput(path) else { continue }
+            // Never this copy under another name for the same folder (for example a
+            // /System/Volumes/Data/... path) and never the update waiting to be installed.
+            if isSameItem(path, selfPath) || isSameItem(path, keep) || isInside(path, AppModel.supportDirectory.path) { continue }
             do {
                 try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
                 moved.append(path)
@@ -186,6 +194,24 @@ enum InstallDoctor {
             registerWithLaunchServices()
         }
         return moved
+    }
+
+    /// True when both paths lead to the same file on disk (same volume and file number).
+    static func isSameItem(_ a: String, _ b: String) -> Bool {
+        let fm = FileManager.default
+        guard let first = try? fm.attributesOfItem(atPath: a), let second = try? fm.attributesOfItem(atPath: b),
+              let fileA = first[.systemFileNumber] as? NSNumber, let fileB = second[.systemFileNumber] as? NSNumber,
+              let volA = first[.systemNumber] as? NSNumber, let volB = second[.systemNumber] as? NSNumber else {
+            // If it cannot be told apart, treat it as the same, so nothing is moved by mistake.
+            return true
+        }
+        return fileA == fileB && volA == volB
+    }
+
+    private static func isInside(_ path: String, _ folder: String) -> Bool {
+        let resolvedPath = (path as NSString).resolvingSymlinksInPath
+        let resolvedFolder = (folder as NSString).resolvingSymlinksInPath
+        return resolvedPath.hasPrefix(resolvedFolder + "/")
     }
 
     private static func isOurApp(at path: String) -> Bool {
