@@ -35,6 +35,11 @@ final class EventRecorder {
         var truncated: Bool
         /// The target app's front window when recording started (see `WindowRelocation`).
         var targetWindow: WindowFrame?
+        /// How many event times came from macOS's own stamp, and how many from the arrival time.
+        var stampedEvents = 0
+        var arrivalTimedEvents = 0
+        /// The largest delay seen between an event happening and this app reading it, in seconds.
+        var largestReadDelay = 0.0
     }
 
     private(set) var isRecording = false
@@ -47,6 +52,9 @@ final class EventRecorder {
     private var otherIgnoredHotKey: HotKey?
     private var targetWindow: WindowFrame?
     private var lastEventTime = 0.0
+    private var stampedEvents = 0
+    private var arrivalTimedEvents = 0
+    private var largestReadDelay = 0.0
     private var throttle = MoveThrottle(minInterval: 0.03, minDistance: 3)
     private var targetApp: TargetApp?
     private var secureInputSeen = false
@@ -68,6 +76,9 @@ final class EventRecorder {
         self.otherIgnoredHotKey = otherIgnoredHotKey
         targetWindow = nil
         lastEventTime = 0
+        stampedEvents = 0
+        arrivalTimedEvents = 0
+        largestReadDelay = 0
         throttle = MoveThrottle(minInterval: options.minEventInterval, minDistance: options.minMoveDistance)
         events.removeAll(keepingCapacity: true)
         targetApp = nil
@@ -119,7 +130,10 @@ final class EventRecorder {
             targetApp: targetApp,
             secureInputSeen: secureInputSeen,
             truncated: truncated,
-            targetWindow: targetWindow
+            targetWindow: targetWindow,
+            stampedEvents: stampedEvents,
+            arrivalTimedEvents: arrivalTimedEvents,
+            largestReadDelay: largestReadDelay
         )
     }
 
@@ -215,6 +229,10 @@ final class EventRecorder {
         if options.preciseTiming, let stamp = NSEvent(cgEvent: event)?.timestamp,
            stamp > 0, abs(stamp - arrival) < 0.5 {
             time = stamp
+            stampedEvents += 1
+            largestReadDelay = max(largestReadDelay, arrival - stamp)
+        } else {
+            arrivalTimedEvents += 1
         }
         if time < lastEventTime { time = lastEventTime }
         lastEventTime = time

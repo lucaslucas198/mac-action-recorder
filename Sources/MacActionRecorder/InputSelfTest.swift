@@ -98,6 +98,14 @@ enum InputSelfTest {
 
         let output = Platform.onMain { recorder.stop() }
         log("Raw events captured: \(output.events.count); target app: \(output.targetApp?.name ?? "none"); window saved: \(output.targetWindow != nil)")
+        log(String(format: "Event times from macOS's stamp: %d, from arrival: %d; largest delay before the app read an event: %.1f ms",
+                   output.stampedEvents, output.arrivalTimedEvents, output.largestReadDelay * 1000))
+        if let first = output.events.first {
+            for event in output.events {
+                log(String(format: "  raw %+.4f s  %@", event.time - first.time, String(describing: event.kind)))
+            }
+            log("  sent: " + sent.map { String(format: "%+.4f", $0 - sent[0]) }.joined(separator: " "))
+        }
         let actions = RecordingBuilder.build(events: output.events, options: options)
         for (index, action) in actions.enumerated() {
             log(String(format: "  %2d  +%.3f s  %@", index + 1, action.delay, ActionDescriber.describe(action)))
