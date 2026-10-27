@@ -1,3 +1,4 @@
+using ActionRecorder.Core;
 using System.Windows;
 using Microsoft.Win32;
 

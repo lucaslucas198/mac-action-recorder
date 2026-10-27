@@ -1,3 +1,4 @@
+using ActionRecorder.Core;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;

@@ -1,3 +1,4 @@
+using ActionRecorder.Core;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
