@@ -299,6 +299,9 @@ jobs:
         continue-on-error: true
         run: |
           [ -d mac-shots ] || exit 0
+          # Only the newest commit on main publishes, so an older, slower run cannot overwrite it.
+          head="$(git ls-remote "https://github.com/${{ github.repository }}.git" refs/heads/main | cut -f1)"
+          if [ "$head" != "${{ github.sha }}" ]; then echo "Not the newest commit; not publishing."; exit 0; fi
           work="$RUNNER_TEMP/mac-shots-branch"
           rm -rf "$work"
           cp -R mac-shots "$work"
