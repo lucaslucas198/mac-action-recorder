@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MacActionRecorderCore
 
 /// Moves, signs and swaps the app bundle. Used by the Welcome screen ("Set Up This Mac") and by
 /// the updater ("Restart to Update").
@@ -19,36 +20,10 @@ enum AppInstaller {
         set { UserDefaults.standard.set(newValue, forKey: signingUnavailableKey) }
     }
 
-    static var applicationsFolder: URL {
-        return URL(fileURLWithPath: "/Applications", isDirectory: true)
-    }
-
-    static var isInstalledInApplications: Bool {
-        let path = Bundle.main.bundleURL.standardizedFileURL.path
-        return path.hasPrefix("/Applications/")
-            || path.hasPrefix(NSHomeDirectory() + "/Applications/")
-    }
-
     /// True when the app is signed with a fixed certificate rather than an ad-hoc signature, so
     /// permissions granted to it keep matching after it is replaced by a newer build.
     static var hasStableSignature: Bool {
-        return Permissions.signatureRequirement().contains("certificate leaf")
-    }
-
-    /// Whether the "Set Up This Mac" step still has something to do.
-    static var needsSetup: Bool {
-        guard Bundle.main.bundlePath.hasSuffix(".app") else { return false }
-        if !isInstalledInApplications { return true }
-        return !(hasStableSignature || signingUnavailable)
-    }
-
-    /// Where the app should live: where it is now if that is already an Applications folder,
-    /// otherwise /Applications.
-    static var destination: URL {
-        if isInstalledInApplications {
-            return Bundle.main.bundleURL
-        }
-        return applicationsFolder.appendingPathComponent(appName, isDirectory: true)
+        return InstallDoctor.signatureKind == .certificate
     }
 
     static func bundledScript(_ name: String) -> URL? {
@@ -64,7 +39,8 @@ enum AppInstaller {
     }
 
     /// Runs `prepare_app.sh` on `app` in the background and reports on the main thread.
-    static func prepare(_ app: URL, completion: @escaping (PrepareResult) -> Void) {
+    /// `onLine` receives each line the script prints, so the progress screen can show what it is doing.
+    static func prepare(_ app: URL, onLine: ((String) -> Void)? = nil, completion: @escaping (PrepareResult) -> Void) {
         guard let script = bundledScript("prepare_app") else {
             completion(.failed("The app's helper script is missing. Download the app again."))
             return
@@ -75,8 +51,27 @@ enum AppInstaller {
         let output = Pipe()
         process.standardOutput = output
         process.standardError = output
+
+        let lock = NSLock()
+        var collected = ""
+        output.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            lock.lock()
+            collected += text
+            lock.unlock()
+            let lines = text.split(whereSeparator: { $0.isNewline }).map { String($0) }.filter { !$0.isEmpty }
+            if let last = lines.last {
+                DispatchQueue.main.async { onLine?(last) }
+            }
+        }
         process.terminationHandler = { finished in
-            let text = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            output.fileHandleForReading.readabilityHandler = nil
+            let rest = output.fileHandleForReading.readDataToEndOfFile()
+            lock.lock()
+            collected += String(data: rest, encoding: .utf8) ?? ""
+            let text = collected
+            lock.unlock()
             let status = finished.terminationStatus
             DispatchQueue.main.async {
                 switch status {
@@ -89,6 +84,7 @@ enum AppInstaller {
         do {
             try process.run()
         } catch {
+            output.fileHandleForReading.readabilityHandler = nil
             completion(.failed("Could not run the helper script: \(error.localizedDescription)"))
         }
     }
@@ -129,27 +125,20 @@ enum AppInstaller {
     }
 
     /// Replaces the app at `destination` with the prepared copy at `staged`, reopens it, and quits
-    /// this app. If copying fails, the old app is kept and reopened.
+    /// this app. The helper waits until this app has really quit before it touches anything. If
+    /// copying fails, the old app is kept and reopened.
     static func swapAndRelaunch(staged: URL, destination: URL) throws {
         let parent = destination.deletingLastPathComponent().path
+        try? FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
         guard FileManager.default.isWritableFile(atPath: parent) else {
             throw InstallError.message("This account cannot write to \(parent). Drag the app into Applications yourself, or sign in as an administrator.")
         }
-        let script = """
-        sleep 1.5
-        if /usr/bin/ditto "$1" "$2.new"; then
-            rm -rf "$2"
-            mv "$2.new" "$2"
-            /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
-            rm -rf "$1"
-        else
-            rm -rf "$2.new"
-        fi
-        /usr/bin/open "$2"
-        """
         let helper = Process()
         helper.executableURL = URL(fileURLWithPath: "/bin/sh")
-        helper.arguments = ["-c", script, "sh", staged.path, destination.path]
+        helper.arguments = [
+            "-c", Installation.swapScript, "sh",
+            String(ProcessInfo.processInfo.processIdentifier), staged.path, destination.path
+        ]
         try helper.run()
         NSApp.terminate(nil)
     }

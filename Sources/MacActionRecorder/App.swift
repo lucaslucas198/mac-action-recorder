@@ -32,9 +32,14 @@ struct MacActionRecorderApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Only one copy of the app may run. If another one should stay, this copy quits here.
+        if InstallDoctor.resolveDuplicateInstancesAtLaunch() {
+            return
+        }
         // Makes `swift run` (no app bundle) behave like a normal windowed app as well.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        SetupManager.shared.launchCheck(model: AppModel.shared)
         // Look for updates shortly after launch, then every few hours (if enabled in Settings).
         // Not before the Welcome screen has been closed: nothing is contacted until you have seen it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
@@ -72,7 +77,7 @@ struct AppCommands: Commands {
             Button("Welcome & Setup…") {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
-                model.showingWelcome = true
+                model.showSetupScreen()
             }
         }
 

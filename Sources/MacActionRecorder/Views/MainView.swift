@@ -6,6 +6,22 @@ struct MainView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
+        ZStack {
+            if model.showingWelcome {
+                // The welcome and setup screens fill the whole window.
+                WelcomeView()
+                    .transition(.opacity)
+                    .zIndex(1)
+            } else {
+                workspace
+                    .transition(.opacity)
+            }
+        }
+        .frame(minWidth: 960, minHeight: 700)
+        .animation(.easeInOut(duration: 0.35), value: model.showingWelcome)
+    }
+
+    private var workspace: some View {
         VStack(spacing: 0) {
             HeaderView()
             Divider()
@@ -18,11 +34,6 @@ struct MainView: View {
                 DetailView()
                     .frame(minWidth: 600)
             }
-        }
-        .frame(minWidth: 960, minHeight: 700)
-        .sheet(isPresented: $model.showingWelcome) {
-            WelcomeView()
-                .environmentObject(model)
         }
     }
 }

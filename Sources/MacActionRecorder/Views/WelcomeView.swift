@@ -2,26 +2,25 @@ import AppKit
 import MacActionRecorderCore
 import SwiftUI
 
-/// The first-run flow, in two pages:
+/// The first-run flow. It fills the whole window and has two pages:
 ///
-/// 1. A home page with the big logo and a **Get Started** button.
-/// 2. The setup page: sets the app up on this Mac, shows the live status of the two permissions,
-///    and closes with the **Enter** button.
+/// 1. Home: the logo, the name and **Get Started**.
+/// 2. Setup: installs the app with a step-by-step progress screen, then walks through the two
+///    permissions, and closes with **Enter**.
 ///
-/// It can be opened again from Help > Welcome & Setup. After "Set Up This Mac" reopens the app,
-/// it starts on the setup page, because the home page was already seen.
+/// Get Started slides over to the setup page and starts the installation by itself. After an
+/// update, or from Help > Welcome & Setup, the window opens straight on the setup page.
 struct WelcomeView: View {
     private enum Page {
         case home
         case setup
     }
 
-    private static let homeSeenKey = "welcomeHomeSeen"
-
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var setup = SetupManager.shared
-    @State private var page: Page = UserDefaults.standard.bool(forKey: WelcomeView.homeSeenKey) ? .setup : .home
+    @State private var page: Page = .home
     @State private var ai: AIStatus?
+    @State private var confirmRepair = false
 
     private struct AIStatus {
         let isAvailable: Bool
@@ -33,20 +32,41 @@ struct WelcomeView: View {
             switch page {
             case .home:
                 HomePage(onStart: getStarted)
-                    .transition(.opacity)
+                    .transition(.asymmetric(
+                        insertion: .opacity,
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
             case .setup:
                 setupPage
-                    .transition(.opacity)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .opacity
+                    ))
             }
         }
-        .frame(width: 600, height: 590)
-        .interactiveDismissDisabled(true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .onAppear {
+            if model.welcomeStartsOnSetup || model.settings.hasCompletedWelcome || setup.isWorking || setup.isContinuing {
+                page = .setup
+            }
+        }
+        .onChange(of: model.welcomeStartsOnSetup) { onSetup in
+            if onSetup {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.88)) { page = .setup }
+            }
+        }
     }
 
     private func getStarted() {
-        UserDefaults.standard.set(true, forKey: WelcomeView.homeSeenKey)
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.88)) {
             page = .setup
+        }
+        // Start installing as soon as the page has slid in.
+        if !setup.isDone && !setup.isWorking {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                setup.run()
+            }
         }
     }
 
@@ -57,66 +77,122 @@ struct WelcomeView: View {
             header
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    setupStep
-                    permissionsStep
-                    updatesStep
-                    aiStep
+                VStack(alignment: .leading, spacing: 16) {
+                    installCard
+                    permissionsCard
+                    optionsCard
                     privacyNote
                 }
-                .padding(20)
+                .frame(maxWidth: 720)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
             }
             Divider()
             footer
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            // Asked once, not on every redraw.
             if ai == nil {
                 let found = AIAssistant.availability
                 ai = AIStatus(isAvailable: found.isAvailable, message: found.message)
             }
+            model.refreshPermissions()
         }
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
-                .frame(width: 48, height: 48)
-            VStack(alignment: .leading, spacing: 3) {
+                .interpolation(.high)
+                .frame(width: 56, height: 56)
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Set up Mac Action Recorder")
-                    .font(.title2.weight(.semibold))
-                Text("Three short steps. You can finish them later from Help > Welcome & Setup.")
+                    .font(.title.weight(.semibold))
+                Text(headerSubtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if !setup.isWorking {
+                Button {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.88)) { page = .home }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.borderless)
+                .opacity(model.settings.hasCompletedWelcome ? 0 : 1)
+                .disabled(model.settings.hasCompletedWelcome)
+            }
         }
-        .padding(20)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
     }
 
-    private var setupStep: some View {
-        let done = setup.isDone
-        return StepCard(number: 1, title: "Set up this Mac", done: done) {
-            Text(done
-                 ? "The app is in Applications and signed on this Mac, so the permissions below stay switched on after updates."
-                 : "Moves the app to Applications and signs it with a certificate made on this Mac. Do this before the permissions, because macOS ties each permission to the app's signature. The app reopens when it is done.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if !done {
-                if case .working(let stage) = setup.phase {
-                    progress(for: stage)
-                } else {
-                    Button("Set Up This Mac") { setup.run() }
+    private var headerSubtitle: String {
+        if setup.isWorking { return "Working… keep this window open. It only takes a moment." }
+        if allDone { return "Everything is ready." }
+        return "Two steps: install the app, then allow keyboard and mouse access."
+    }
+
+    private var allDone: Bool {
+        return setup.isDone && model.inputMonitoringGranted && model.accessibilityGranted
+    }
+
+    // MARK: Step 1: install
+
+    private var installCard: some View {
+        StepCard(number: 1, title: "Install on this Mac", done: setup.isDone && !setup.isWorking) {
+            switch setup.phase {
+            case .running:
+                SetupProgressView(setup: setup)
+            case .failed(let message):
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Setup stopped", systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.red)
+                    Text(message)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("You can try again. If it keeps failing: quit the app, drag it from the disk image into your Applications folder yourself, and open it from there.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Try Again") { setup.run() }
+                        .buttonStyle(.borderedProminent)
                 }
-            }
-            if case .failed(let message) = setup.phase {
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+            case .finished:
+                finishedSummary
+            case .idle:
+                if setup.isDone {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Installed in Applications and signed for this Mac.", systemImage: "checkmark.seal.fill")
+                            .font(.callout)
+                            .foregroundStyle(.green)
+                        Text("Permissions you switch on will keep working after updates.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Button("Check for Old Copies Again") { setup.run() }
+                            .controlSize(.small)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Puts the app in your Applications folder, signs it with a certificate made on this Mac (so macOS remembers your permissions after updates), ejects old installer disks and moves other copies to the Trash. The app reopens once on its own.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            setup.run()
+                        } label: {
+                            Label("Install and Set Up", systemImage: "arrow.down.app")
+                                .frame(minWidth: 200)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+                }
             }
             if let note = setup.note {
                 Text(note)
@@ -127,114 +203,160 @@ struct WelcomeView: View {
         }
     }
 
-    /// The loading bar. It moves when a stage really begins; the text says what is happening.
-    private func progress(for stage: SetupStage) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ProgressView(value: stage.fraction)
-                .animation(.easeInOut(duration: 0.4), value: stage.fraction)
-            HStack {
-                Text(stage.title)
-                    .font(.callout.weight(.medium))
-                Spacer()
-                Text(stage.stepText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let hint = stage.hint {
-                Text(hint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    private var finishedSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Installed and tidied up.", systemImage: "checkmark.seal.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.green)
+            ProgressView(value: 1)
+                .tint(.green)
+            ForEach(setup.results, id: \.self) { line in
+                Label(line, systemImage: "info.circle")
+                    .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            DisclosureGroup("What was done") {
+                StepList(planned: setup.plannedSteps, completed: setup.completed, current: nil)
+                    .padding(.top, 4)
+            }
+            .font(.callout)
         }
     }
 
-    private var permissionsStep: some View {
-        let ready = setup.isDone
-        return StepCard(
+    // MARK: Step 2: permissions
+
+    private var permissionsCard: some View {
+        StepCard(
             number: 2,
             title: "Allow keyboard and mouse access",
             done: model.inputMonitoringGranted && model.accessibilityGranted
         ) {
-            if !ready {
-                Text("Finish step 1 first, otherwise these would need to be switched on again.")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-            }
-            Group {
-                PermissionRow(
-                    title: "Input Monitoring",
-                    detail: "Lets the app see what you click and type while recording, and hear the emergency-stop shortcut.",
-                    granted: model.inputMonitoringGranted,
-                    request: { Permissions.requestInputMonitoring() },
-                    open: { Permissions.openInputMonitoringSettings() }
-                )
-                PermissionRow(
-                    title: "Accessibility",
-                    detail: "Lets the app click and type for you during playback.",
-                    granted: model.accessibilityGranted,
-                    request: { Permissions.requestAccessibility() },
-                    open: { Permissions.openAccessibilitySettings() }
-                )
-            }
-            .disabled(!ready)
-            Text("In System Settings, switch the app on in each list (use the + button and pick it from Applications if it is not listed). Then come back; the checkmarks update by themselves. If a switch is on but still shows Not granted, use Quit and Reopen.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Quit and Reopen") { Permissions.relaunch() }
-                .controlSize(.small)
-        }
-    }
-
-    private var updatesStep: some View {
-        StepCard(number: 3, title: "Updates", done: nil) {
-            Toggle("Check GitHub for new versions and download them in the background", isOn: updatesBinding)
-            Text("New versions are only installed when you click Restart to Update. Turn this off and the app uses no network at all. You can change it later in Settings.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var aiStep: some View {
-        StepCard(number: 4, title: "On-device AI helper (optional)", done: nil) {
-            if let ai = ai {
-                Text(ai.isAvailable
-                     ? "Available. It runs on this Mac and can suggest ways to make a macro more reliable. You always choose which changes to apply."
-                     : ai.message)
+            if !setup.isDone || setup.isWorking {
+                Label("Finish step 1 first. Permissions switched on before that would have to be switched on again.", systemImage: "hourglass")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                ProgressView().controlSize(.small)
+                VStack(alignment: .leading, spacing: 12) {
+                    PermissionStep(
+                        title: "Input Monitoring",
+                        purpose: "lets the app see your clicks and typing while recording, and hear the emergency-stop shortcut.",
+                        granted: model.inputMonitoringGranted,
+                        listName: "Input Monitoring",
+                        open: {
+                            Permissions.requestInputMonitoring()
+                            Permissions.openInputMonitoringSettings()
+                        }
+                    )
+                    PermissionStep(
+                        title: "Accessibility",
+                        purpose: "lets the app click and type for you during playback.",
+                        granted: model.accessibilityGranted,
+                        listName: "Accessibility",
+                        open: {
+                            Permissions.requestAccessibility()
+                            Permissions.openAccessibilitySettings()
+                        }
+                    )
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Switched it on but it still says Not allowed?")
+                            .font(.callout.weight(.medium))
+                        Text("Input Monitoring often needs the app to restart: click Quit and Reopen. If that does not help, Repair removes this app's old entries from both lists; then switch it on again.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack {
+                            Button("Check Again") { model.recheckInputMonitoring() }
+                            Button("Quit and Reopen") { Permissions.relaunch() }
+                            Button("Repair…") { confirmRepair = true }
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+        }
+        .confirmationDialog("Remove this app's old permission entries?", isPresented: $confirmRepair, titleVisibility: .visible) {
+            Button("Remove and Start Again", role: .destructive) {
+                let done = InstallDoctor.repairPermissionsIfNeeded(force: true)
+                model.refreshPermissions()
+                if done {
+                    Permissions.requestInputMonitoring()
+                    Permissions.requestAccessibility()
+                } else {
+                    model.showNotice("The entries could not be removed. In System Settings, select Mac Action Recorder in each list and click the minus button, then add it again.", isError: true)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Mac Action Recorder is removed from the Input Monitoring and Accessibility lists. Nothing else changes. macOS then asks again, and you switch both on.")
+        }
+    }
+
+    // MARK: Options
+
+    private var optionsCard: some View {
+        StepCard(number: nil, title: "Options", done: nil) {
+            Toggle("Check GitHub for new versions and download them in the background", isOn: updatesBinding)
+            Text("A new version is installed only when you click Restart to Update, and it keeps your permissions. Turn this off and the app uses no network at all.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.secondary)
+                if let ai = ai {
+                    Text(ai.isAvailable
+                         ? "On-device AI helper: available. It runs on this Mac and suggests ways to make macros more reliable; you choose what to apply."
+                         : "On-device AI helper: " + ai.message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
             }
         }
     }
 
     private var privacyNote: some View {
-        Text("The app records only after you click Start Recording, and shows a recording indicator in the menu bar the whole time. Recordings stay on this Mac. Anything you type while recording is saved in the recording, so do not record passwords.")
+        Text("The app records only after you click Start Recording and shows a red indicator the whole time. Recordings stay on this Mac. Anything you type while recording is saved in the recording, so do not record passwords.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private var footer: some View {
-        HStack {
-            if !(model.inputMonitoringGranted && model.accessibilityGranted && setup.isDone) {
-                Text("Something above is not finished. You can still enter and finish later.")
+        HStack(spacing: 12) {
+            if setup.isWorking {
+                ProgressView().controlSize(.small)
+                Text("Setting up… \(Int((setup.progress * 100).rounded()))%")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            } else if !allDone {
+                Text("You can enter now and finish the rest later from Help > Welcome & Setup.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Label("All set", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
             }
             Spacer()
-            Button("Enter") { enter() }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(setup.isWorking)
+            Button {
+                enter()
+            } label: {
+                Text("Enter")
+                    .frame(minWidth: 120)
+            }
+            .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(setup.isWorking)
         }
-        .padding(16)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
     }
 
     // MARK: Actions
@@ -251,67 +373,250 @@ struct WelcomeView: View {
 
     private func enter() {
         model.settings.hasCompletedWelcome = true
+        model.welcomeStartsOnSetup = false
         model.showingWelcome = false
         UpdateManager.shared.startSchedule()
     }
 }
 
-// MARK: - Home page
+// MARK: - Progress
 
-/// The first thing a new user sees: the logo, the name, and one button.
-private struct HomePage: View {
-    let onStart: () -> Void
+/// The moving bar, the step it is on, what that step is doing right now, and every step's state.
+struct SetupProgressView: View {
+    @ObservedObject var setup: SetupManager
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.16, green: 0.40, blue: 0.88), Color(red: 0.08, green: 0.22, blue: 0.58)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(setup.currentStep?.title ?? "Working")
+                    .font(.headline)
                 Spacer()
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 170, height: 170)
-                    .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
-                Text("Mac Action Recorder")
-                    .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.top, 22)
-                Text("Record once. Replay at any speed.")
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.top, 6)
-                Spacer()
-                Button(action: onStart) {
-                    Text("Get Started")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(Color(red: 0.08, green: 0.22, blue: 0.58))
-                        .frame(width: 300, height: 52)
-                        .background(Capsule().fill(Color.white))
+                Text("\(Int((setup.progress * 100).rounded()))%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: min(1, max(0, setup.progress)))
+                .progressViewStyle(.linear)
+                .animation(.linear(duration: 0.1), value: setup.progress)
+            if let step = setup.currentStep {
+                Text(step.detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text(setup.liveLine ?? "Working…")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Text("\(Int(setup.stepElapsed)) s")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.defaultAction)
-                Text("A short setup follows. Everything stays on this Mac.")
+                if setup.stepElapsed > step.typicalSeconds * 2.5, let hint = step.slowHint {
+                    Label(hint, systemImage: "hand.point.up.left")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                }
+            }
+            StepList(planned: setup.plannedSteps, completed: setup.completed, current: setup.currentStep)
+        }
+    }
+}
+
+/// Every planned step with a checkmark (and time) when done, a spinner when running, or a circle.
+struct StepList: View {
+    let planned: [SetupStep]
+    let completed: [SetupManager.CompletedStep]
+    let current: SetupStep?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(planned) { step in
+                HStack(spacing: 8) {
+                    icon(for: step)
+                        .frame(width: 16)
+                    Text(step.title)
+                        .font(.callout)
+                        .foregroundStyle(step != current && doneStep(step) == nil ? Color.secondary : Color.primary)
+                    if let done = doneStep(step), let note = done.note {
+                        Text("· " + note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    Spacer(minLength: 0)
+                    if let done = doneStep(step), done.seconds >= 0.05 {
+                        Text(String(format: "%.1f s", done.seconds))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func doneStep(_ step: SetupStep) -> SetupManager.CompletedStep? {
+        return completed.first { $0.step == step }
+    }
+
+    @ViewBuilder
+    private func icon(for step: SetupStep) -> some View {
+        if doneStep(step) != nil {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        } else if step == current {
+            ProgressView().controlSize(.mini)
+        } else {
+            Image(systemName: "circle").foregroundStyle(.tertiary)
+        }
+    }
+}
+
+// MARK: - Permission step
+
+/// One permission with numbered instructions and a live status.
+private struct PermissionStep: View {
+    let title: String
+    let purpose: String
+    let granted: Bool
+    let listName: String
+    let open: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
+                .font(.title2)
+                .foregroundStyle(granted ? Color.green : Color.orange)
+                .frame(width: 28)
+                .animation(.spring(response: 0.4, dampingFraction: 0.6), value: granted)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(title)
+                        .font(.headline)
+                    Text(granted ? "Allowed" : "Not allowed yet")
+                        .font(.callout)
+                        .foregroundStyle(granted ? Color.green : Color.secondary)
+                    Spacer()
+                    if !granted {
+                        Button("Open \(listName) Settings", action: open)
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                Text(title + " " + purpose)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !granted {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("1. Click Open \(listName) Settings. System Settings opens on the right list.")
+                        Text("2. Switch on Mac Action Recorder. Not in the list? Click +, choose Applications > Mac Action Recorder, click Open.")
+                        Text("3. If macOS offers Quit & Reopen, click it. This window comes back by itself.")
+                    }
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.75))
-                    .padding(.top, 12)
-                    .padding(.bottom, 34)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
 }
 
-/// A numbered box in the setup page with a done checkmark (or none, for optional steps).
+// MARK: - Home page
+
+/// The first thing a new user sees: the logo, the name, and one button. Elements ease in one
+/// after another.
+private struct HomePage: View {
+    let onStart: () -> Void
+    @State private var shown = false
+    @State private var glow = false
+
+    private let deep = Color(red: 0.08, green: 0.22, blue: 0.58)
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.18, green: 0.44, blue: 0.92), deep],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            // A soft light behind the logo that slowly breathes.
+            Circle()
+                .fill(Color.white.opacity(glow ? 0.16 : 0.08))
+                .frame(width: 420, height: 420)
+                .blur(radius: 60)
+                .offset(y: -60)
+                .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: glow)
+
+            VStack(spacing: 0) {
+                Spacer()
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 180, height: 180)
+                    .shadow(color: .black.opacity(0.35), radius: 20, y: 10)
+                    .scaleEffect(shown ? 1 : 0.7)
+                    .opacity(shown ? 1 : 0)
+                    .animation(.spring(response: 0.7, dampingFraction: 0.7), value: shown)
+                Text("Mac Action Recorder")
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.top, 26)
+                    .offset(y: shown ? 0 : 16)
+                    .opacity(shown ? 1 : 0)
+                    .animation(.easeOut(duration: 0.6).delay(0.15), value: shown)
+                Text("Record once. Replay at any speed.")
+                    .font(.title2)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.top, 8)
+                    .offset(y: shown ? 0 : 16)
+                    .opacity(shown ? 1 : 0)
+                    .animation(.easeOut(duration: 0.6).delay(0.3), value: shown)
+                Spacer()
+                Button(action: onStart) {
+                    HStack(spacing: 10) {
+                        Text("Get Started")
+                        Image(systemName: "arrow.right")
+                    }
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(deep)
+                    .frame(width: 300, height: 54)
+                    .background(Capsule().fill(Color.white))
+                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
+                .opacity(shown ? 1 : 0)
+                .animation(.easeOut(duration: 0.6).delay(0.5), value: shown)
+                Text("Setup takes about a minute. Everything stays on this Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.top, 14)
+                    .padding(.bottom, 44)
+                    .opacity(shown ? 1 : 0)
+                    .animation(.easeOut(duration: 0.6).delay(0.6), value: shown)
+            }
+            .padding(.horizontal, 24)
+        }
+        .onAppear {
+            shown = true
+            glow = true
+        }
+    }
+}
+
+/// A box in the setup page with a number (or none) and a done checkmark.
 private struct StepCard<Content: View>: View {
-    let number: Int
+    let number: Int?
     let title: String
     let done: Bool?
     let content: Content
 
-    init(number: Int, title: String, done: Bool?, @ViewBuilder content: () -> Content) {
+    init(number: Int?, title: String, done: Bool?, @ViewBuilder content: () -> Content) {
         self.number = number
         self.title = title
         self.done = done
@@ -319,29 +624,36 @@ private struct StepCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if let done = done {
-                    Image(systemName: done ? "checkmark.circle.fill" : "\(number).circle")
-                        .foregroundStyle(done ? Color.green : Color.secondary)
-                } else {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                if done == true {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.green)
+                } else if let number = number {
                     Image(systemName: "\(number).circle")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title3)
                         .foregroundStyle(.secondary)
                 }
                 Text(title)
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
             }
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(Color(nsColor: .controlBackgroundColor))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.secondary.opacity(0.2))
         )
+        .animation(.easeInOut(duration: 0.25), value: done)
     }
 }

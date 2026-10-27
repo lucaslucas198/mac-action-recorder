@@ -27,11 +27,14 @@ if [[ -z "$APP" || ! -f "$APP/Contents/Info.plist" ]]; then
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
+echo "==> Removing the download flag"
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
+echo "==> Looking for this Mac's signing certificate"
 IDENTITY=""
 if [[ -f "$HERE/ensure_signing_identity.sh" ]]; then
-    IDENTITY="$(bash "$HERE/ensure_signing_identity.sh" 2>&1 | tail -n 1)"
+    # Progress notes from the helper go to stderr (shown to the user); the name comes on stdout.
+    IDENTITY="$(bash "$HERE/ensure_signing_identity.sh" | tail -n 1)"
 fi
 case "$IDENTITY" in
     "Mac Action Recorder Local Signing") ;;
@@ -41,7 +44,8 @@ case "$IDENTITY" in
         ;;
 esac
 
-if codesign --force --deep --sign "$IDENTITY" "$APP"; then
+echo "==> Signing the app with \"$IDENTITY\""
+if codesign --force --deep --sign "$IDENTITY" "$APP" 2>&1; then
     echo "Signed with: $IDENTITY"
     exit 0
 fi

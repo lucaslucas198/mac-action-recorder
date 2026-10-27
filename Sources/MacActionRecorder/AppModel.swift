@@ -128,6 +128,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var loadIssues: [String] = []
     /// Whether the Welcome screen is showing. It opens on first launch until Enter is clicked.
     @Published var showingWelcome = false
+    /// When true, the Welcome screen opens on its setup page instead of the home page.
+    @Published var welcomeStartsOnSetup = false
 
     // Status
     @Published private(set) var status: AppStatus = .idle
@@ -190,6 +192,7 @@ final class AppModel: ObservableObject {
     private var isApplyingDefaults = false
     private var didHideApp = false
     private var lastRange: Range<Int>?
+    private var rememberedGrant = false
     /// Where the pointer was when playback began, to put it back afterwards (if that is switched on).
     private var pointerAtStart: CGPoint?
     /// Number of actions the app prepends (opening the start channel) in the current run.
@@ -362,6 +365,25 @@ final class AppModel: ObservableObject {
         let input = Permissions.inputMonitoringGranted || inputMonitoringWorks
         if accessibility != accessibilityGranted { accessibilityGranted = accessibility }
         if input != inputMonitoringGranted { inputMonitoringGranted = input }
+        if accessibility && input && !rememberedGrant {
+            // Lets a later launch tell whether the permissions belong to this signature.
+            rememberedGrant = true
+            InstallDoctor.rememberGrantedSignature()
+        }
+    }
+
+    /// Re-tests Input Monitoring for real (macOS's quick check can lag behind the switch).
+    func recheckInputMonitoring() {
+        if !Permissions.inputMonitoringGranted {
+            inputMonitoringWorks = Permissions.canObserveInput()
+        }
+        refreshPermissions()
+    }
+
+    /// Opens the full-window setup page (used after an update and by "Welcome & Setup").
+    func showSetupScreen() {
+        welcomeStartsOnSetup = true
+        showingWelcome = true
     }
 
     // MARK: Recording

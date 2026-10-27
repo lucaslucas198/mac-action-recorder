@@ -78,7 +78,7 @@ struct MenuBarContent: View {
                 openWindow(id: "main")
                 NSApp.unhide(nil)
                 NSApp.activate(ignoringOtherApps: true)
-                model.showingWelcome = true
+                model.showSetupScreen()
             }
             Button("Check for Updates…") { UpdateManager.shared.check(userInitiated: true) }
             Divider()

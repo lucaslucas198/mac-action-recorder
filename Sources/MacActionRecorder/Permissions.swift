@@ -145,16 +145,10 @@ enum Permissions {
         }
     }
 
-    /// Starts a fresh copy of the app and quits this one. Some permission changes only take
-    /// effect in a newly launched process.
+    /// Quits this copy and opens the installed app again once this one has really quit.
+    /// Some permission changes only take effect in a newly launched process.
     static func relaunch() {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in
-            DispatchQueue.main.async {
-                NSApp.terminate(nil)
-            }
-        }
+        InstallDoctor.relaunch()
     }
 
     private static func open(_ string: String) {
