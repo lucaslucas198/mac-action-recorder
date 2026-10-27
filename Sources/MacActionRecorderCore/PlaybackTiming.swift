@@ -64,6 +64,9 @@ public enum PlaybackSchedule {
     public static let maxLag = 0.15
     /// Shortest gap kept before a click, key press or text while catching up.
     public static let minimumGap = 0.01
+    /// How long before a click, key press or text the safety and foreground checks run, so
+    /// their time does not delay the step itself.
+    public static let checkLead = 0.02
 
     /// When to start the next action: its time on the timeline, but never sooner than `floor`
     /// after the previous action ended.

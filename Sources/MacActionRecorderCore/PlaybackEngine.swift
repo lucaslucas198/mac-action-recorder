@@ -276,11 +276,19 @@ public final class PlaybackEngine {
             var due = Run.now()
             var lastEnd = due
 
+            /// Sleeps until `target`. Time spent paused moves the timeline on; the amount is
+            /// returned (nil if the run was cancelled).
+            func sleep(until target: Double) -> Double? {
+                if !run.sleep(max(0, target - Run.now())) { return nil }
+                let paused = run.takePausedTime()
+                due += paused
+                return paused
+            }
+
             /// Sleeps until `due`, but never less than `floor` after the previous action ended.
             func waitForDue(floor: Double) -> Bool {
                 let target = PlaybackSchedule.waitTarget(due: due, lastEnd: lastEnd, floor: floor)
-                if !run.sleep(max(0, target - Run.now())) { return false }
-                due += run.takePausedTime()
+                guard sleep(until: target) != nil else { return false }
                 due = PlaybackSchedule.resyncIfFarBehind(due: due, now: Run.now())
                 return true
             }
@@ -301,16 +309,26 @@ public final class PlaybackEngine {
                     // Clicks, keys and text never follow the previous step with no gap at all,
                     // even when catching up.
                     let floor = isMovement ? 0 : min(delay, PlaybackSchedule.minimumGap)
-                    if !waitForDue(floor: floor) { return }
+                    if PlaybackTiming.requiresForeground(action.kind) {
+                        // Wake a moment early for the checks (they ask macOS which app is in front
+                        // and where its window is), so the time they take does not make the step
+                        // late; then wait out the rest.
+                        var target = PlaybackSchedule.waitTarget(due: due, lastEnd: lastEnd, floor: floor)
+                        guard let pausedEarly = sleep(until: target - PlaybackSchedule.checkLead) else { return }
+                        target += pausedEarly
 
-                    if let required = config.requiredBundleID,
-                       PlaybackTiming.requiresForeground(action.kind),
-                       frontmostBundleID() != required {
-                        fail(run, foregroundMessage(config))
-                        return
-                    }
-                    if PlaybackTiming.requiresForeground(action.kind), let reason = safetyCheck(action.kind) {
-                        fail(run, reason)
+                        if let required = config.requiredBundleID, frontmostBundleID() != required {
+                            fail(run, foregroundMessage(config))
+                            return
+                        }
+                        if let reason = safetyCheck(action.kind) {
+                            fail(run, reason)
+                            return
+                        }
+
+                        guard sleep(until: target) != nil else { return }
+                        due = PlaybackSchedule.resyncIfFarBehind(due: due, now: Run.now())
+                    } else if !waitForDue(floor: floor) {
                         return
                     }
 
