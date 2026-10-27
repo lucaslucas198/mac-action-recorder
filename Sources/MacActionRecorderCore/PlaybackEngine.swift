@@ -557,12 +557,17 @@ public final class PlaybackEngine {
         /// clock instead of an interruptible timed wait, which macOS may let run a little late.
         static let preciseWindow = 0.015
 
-        /// Sleeps until the uptime `target`: an interruptible wait for most of it, then a precise
-        /// wait for the last few milliseconds (a stop or pause arriving then takes effect at most
-        /// that much later). Returns false if the run was cancelled.
+        /// Sleeps until the uptime `target`. macOS may let a timed wait end late by a share of its
+        /// length (timer tolerance), so long waits are made in halves of what is left, each one
+        /// interruptible by Stop and Pause; the last few milliseconds use the precise clock (a stop
+        /// arriving then takes effect at most that much later). Returns false if cancelled.
         func sleep(untilUptime target: Double) -> Bool {
-            let coarseEnd = target - Run.preciseWindow
-            if !sleep(max(0, coarseEnd - Run.now())) { return false }
+            while true {
+                let left = target - Run.now()
+                if left <= Run.preciseWindow { break }
+                let chunk = left > 0.1 ? left / 2 : left - Run.preciseWindow
+                if !sleep(chunk) { return false }
+            }
             let rest = target - Run.now()
             if rest > 0 {
                 Run.preciseWait(seconds: min(rest, Run.preciseWindow))
