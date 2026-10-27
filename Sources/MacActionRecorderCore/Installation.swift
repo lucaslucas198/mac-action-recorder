@@ -154,7 +154,7 @@ public enum Installation {
     // MARK: Helper scripts
 
     /// A small `/bin/sh` script that waits until the process `pid` has quit (at most `timeout`
-    /// seconds) and then opens `app`. Used for "Quit and Reopen", so the new copy never starts
+    /// seconds) and then opens `app` (unless `$4` is `--no-open`, used by the CI self-test). Used for "Quit and Reopen", so the new copy never starts
     /// while the old one is still running. Arguments are passed separately, never pasted into code.
     public static let reopenScript = """
     pid="$1"; app="$2"; limit="$3"
@@ -164,7 +164,7 @@ public enum Installation {
         if [ "$i" -gt $((limit * 10)) ]; then break; fi
         /bin/sleep 0.1
     done
-    /usr/bin/open "$app"
+    [ "$4" = "--no-open" ] || /usr/bin/open "$app"
     """
 
     /// Waits for `pid` to quit, replaces the app at `$3` with the prepared copy at `$2`, removes the
@@ -188,7 +188,7 @@ public enum Installation {
     fi
     lsreg=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
     [ -x "$lsreg" ] && "$lsreg" -f "$dest" 2>/dev/null
-    /usr/bin/open "$dest"
+    [ "$4" = "--no-open" ] || /usr/bin/open "$dest"
     """
 }
 

@@ -66,8 +66,13 @@ enum Permissions {
     /// The code-signing requirement macOS matches permissions against, e.g. `cdhash H"..."` for an
     /// ad-hoc signature (changes with every build) or `certificate leaf = H"..."` for a stable one.
     static func signatureRequirement() -> String {
+        return signatureRequirement(of: appURL)
+    }
+
+    /// The designated requirement of the app bundle at `url`.
+    static func signatureRequirement(of url: URL) -> String {
         var staticCode: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(appURL as CFURL, [], &staticCode) == errSecSuccess,
+        guard SecStaticCodeCreateWithPath(url as CFURL, [], &staticCode) == errSecSuccess,
               let code = staticCode else {
             return "unavailable (not a signed app bundle)"
         }
