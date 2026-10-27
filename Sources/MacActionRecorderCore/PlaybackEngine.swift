@@ -278,10 +278,10 @@ public final class PlaybackEngine {
 
             /// Sleeps until `due`, but never less than `floor` after the previous action ended.
             func waitForDue(floor: Double) -> Bool {
-                let target = max(due, lastEnd + floor)
+                let target = PlaybackSchedule.waitTarget(due: due, lastEnd: lastEnd, floor: floor)
                 if !run.sleep(max(0, target - Run.now())) { return false }
                 due += run.takePausedTime()
-                if Run.now() - due > PlaybackEngine.maxLag { due = Run.now() }
+                due = PlaybackSchedule.resyncIfFarBehind(due: due, now: Run.now())
                 return true
             }
 
@@ -300,7 +300,7 @@ public final class PlaybackEngine {
                 } else {
                     // Clicks, keys and text never follow the previous step with no gap at all,
                     // even when catching up.
-                    let floor = isMovement ? 0 : min(delay, PlaybackEngine.minimumGap)
+                    let floor = isMovement ? 0 : min(delay, PlaybackSchedule.minimumGap)
                     if !waitForDue(floor: floor) { return }
 
                     if let required = config.requiredBundleID,
@@ -334,9 +334,9 @@ public final class PlaybackEngine {
                     }
 
                     // The time this action was meant to take: the click's hold, the typing.
-                    due += PlaybackTiming.plannedSpan(of: action, config: config) + pausedWhileTyping + run.takePausedTime()
+                    due += pausedWhileTyping + run.takePausedTime()
                     lastEnd = Run.now()
-                    if lastEnd - due > PlaybackEngine.maxLag { due = lastEnd }
+                    due = PlaybackSchedule.dueAfterAction(due: due, plannedSpan: PlaybackTiming.plannedSpan(of: action, config: config), end: lastEnd)
                 }
 
                 let completed = Double((iteration - 1) * actions.count + offset + 1)
@@ -367,10 +367,7 @@ public final class PlaybackEngine {
 
     /// Single-click holds longer than this are played as press, interruptible wait, release.
     static let splitHoldAbove = 0.25
-    /// Further behind the timeline than this, playback restarts the timeline from now.
-    static let maxLag = 0.15
-    /// Shortest gap kept before a click, key press or text while catching up.
-    static let minimumGap = 0.01
+
 
     /// Plays a click with the hold time it was recorded with (when known and switched on).
     /// Returns false if playback was cancelled part-way.
@@ -415,7 +412,7 @@ public final class PlaybackEngine {
         for (offset, character) in characters.enumerated() {
             if offset > 0 {
                 var target = start + Double(offset) * gap
-                if Run.now() - target > PlaybackEngine.maxLag {
+                if Run.now() - target > PlaybackSchedule.maxLag {
                     // Far behind: carry on from here at the normal pace instead of rushing.
                     start = Run.now() - Double(offset) * gap
                     target = Run.now()

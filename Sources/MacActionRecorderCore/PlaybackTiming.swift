@@ -58,6 +58,33 @@ public struct SpeedPreset: Equatable, Identifiable {
     }
 }
 
+/// The arithmetic of keeping playback on the recorded timeline (used by `PlaybackEngine`).
+public enum PlaybackSchedule {
+    /// Further behind the timeline than this, playback restarts the timeline from now.
+    public static let maxLag = 0.15
+    /// Shortest gap kept before a click, key press or text while catching up.
+    public static let minimumGap = 0.01
+
+    /// When to start the next action: its time on the timeline, but never sooner than `floor`
+    /// after the previous action ended.
+    public static func waitTarget(due: Double, lastEnd: Double, floor: Double) -> Double {
+        return max(due, lastEnd + max(0, floor))
+    }
+
+    /// Where the timeline stands after an action that started on `due`, was meant to take
+    /// `plannedSpan` and really ended at `end`: on the timeline when it is late by at most `maxLag`
+    /// (the next gap makes up for it), otherwise restarted from `end`.
+    public static func dueAfterAction(due: Double, plannedSpan: Double, end: Double) -> Double {
+        let next = due + max(0, plannedSpan)
+        return end - next > maxLag ? end : next
+    }
+
+    /// Like `dueAfterAction`, for a moment where nothing was planned to take time (after a wait).
+    public static func resyncIfFarBehind(due: Double, now: Double) -> Double {
+        return now - due > maxLag ? now : due
+    }
+}
+
 public enum PlaybackTiming {
     public static let minSpeed = 0.05
     public static let maxSpeed = 20.0

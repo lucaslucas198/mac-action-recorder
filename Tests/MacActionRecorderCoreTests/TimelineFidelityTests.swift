@@ -239,15 +239,23 @@ final class TimelineFidelityTests: XCTestCase {
     }
 
     /// A slow action is made up in the next gap: the next step still starts on the timeline.
+    /// (If the test machine makes the slow step much slower than asked, past the catch-up limit,
+    /// the engine correctly restarts the timeline instead; that case is checked too.)
     func testASlowActionDoesNotDelayTheNextOne() {
         let performer = TestPerformer()
         let lock = NSLock()
-        var times: [Double] = []
+        var starts: [Double] = []
+        var firstEnded = 0.0
         performer.onPerform = { _, count in
             lock.lock()
-            times.append(ProcessInfo.processInfo.systemUptime)
+            starts.append(ProcessInfo.processInfo.systemUptime)
             lock.unlock()
-            if count == 1 { Thread.sleep(forTimeInterval: 0.14) }
+            if count == 1 {
+                Thread.sleep(forTimeInterval: 0.08)
+                lock.lock()
+                firstEnded = ProcessInfo.processInfo.systemUptime
+                lock.unlock()
+            }
         }
         let engine = PlaybackEngine(performer: performer, frontmostBundleID: { nil })
         let actions: [MacroAction] = [.key(1), .key(2, delay: 1.0)]
@@ -258,14 +266,21 @@ final class TimelineFidelityTests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.005)
         }
         lock.lock()
-        let seen = times
+        let seen = starts
+        let ended = firstEnded
         lock.unlock()
         XCTAssertEqual(seen.count, 2)
         guard seen.count == 2 else { return }
-        // On the timeline: 1.0 s after the first started, not 1.0 s after it finished (1.14 s).
-        // The margin allows for a busy test machine waking the thread late.
-        XCTAssertLessThan(seen[1] - seen[0], 1.10)
-        XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.99)
+        let slowTook = ended - seen[0]
+        if slowTook < PlaybackSchedule.maxLag - 0.01 {
+            // On the timeline: 1.0 s after the first started, not 1.0 s after it finished.
+            // The margin allows for a busy test machine waking the thread late.
+            XCTAssertLessThan(seen[1] - seen[0], 1.25, "a sanity bound only; the exact rule is tested without a clock below")
+            XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.99)
+        } else {
+            // Too far behind: the timeline restarts from the end of the slow step.
+            XCTAssertGreaterThanOrEqual(seen[1] - ended, 0.99)
+        }
     }
 
     func testPlannedSpanCoversHoldsAndTyping() {
@@ -297,5 +312,33 @@ final class TimelineFidelityTests: XCTestCase {
         clock += actions.last?.delay ?? 0
         // The last click started at 599 * 0.2337 s.
         XCTAssertEqual(clock, 599 * 0.2337, accuracy: 0.001)
+    }
+
+    // MARK: Schedule arithmetic (no clock involved)
+
+    func testASlowStepIsMadeUpInTheNextGap() {
+        // Planned at 0, meant to be instant, really ended at 0.08: the timeline stays at 0 ...
+        let due = PlaybackSchedule.dueAfterAction(due: 0, plannedSpan: 0, end: 0.08)
+        XCTAssertEqual(due, 0, accuracy: 1e-12)
+        // ... so the next step (1.0 s later on the timeline) is due at 1.0, not 1.08.
+        XCTAssertEqual(PlaybackSchedule.waitTarget(due: due + 1.0, lastEnd: 0.08, floor: 0.01), 1.0, accuracy: 1e-12)
+    }
+
+    func testFarBehindRestartsTheTimelineInsteadOfRushing() {
+        let due = PlaybackSchedule.dueAfterAction(due: 0, plannedSpan: 0, end: 0.4)
+        XCTAssertEqual(due, 0.4, accuracy: 1e-12)
+        XCTAssertEqual(PlaybackSchedule.waitTarget(due: due + 1.0, lastEnd: 0.4, floor: 0.01), 1.4, accuracy: 1e-12)
+        XCTAssertEqual(PlaybackSchedule.resyncIfFarBehind(due: 1.0, now: 1.2), 1.2, accuracy: 1e-12)
+        XCTAssertEqual(PlaybackSchedule.resyncIfFarBehind(due: 1.0, now: 1.1), 1.0, accuracy: 1e-12)
+    }
+
+    func testPlannedHoldMovesTheTimelineOn() {
+        // A click held 0.2 s that ended at 0.205 keeps the timeline at 0.2.
+        XCTAssertEqual(PlaybackSchedule.dueAfterAction(due: 0, plannedSpan: 0.2, end: 0.205), 0.2, accuracy: 1e-12)
+    }
+
+    func testCatchingUpNeverSkipsTheGapEntirely() {
+        // Due long ago, but a click still waits the minimum gap after the previous step.
+        XCTAssertEqual(PlaybackSchedule.waitTarget(due: 0.5, lastEnd: 0.6, floor: PlaybackSchedule.minimumGap), 0.61, accuracy: 1e-12)
     }
 }
