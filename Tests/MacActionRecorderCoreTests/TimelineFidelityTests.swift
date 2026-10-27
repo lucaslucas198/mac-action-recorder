@@ -237,4 +237,44 @@ final class TimelineFidelityTests: XCTestCase {
         let slow = PlaybackTiming.pressTiming(count: 2, recorded: 3, clickHold: 0.01, doubleClickGap: 0.03)
         XCTAssertLessThanOrEqual(slow.gap, 0.4)
     }
+
+    /// A slow action is made up in the next gap: the next step still starts on the timeline.
+    func testASlowActionDoesNotDelayTheNextOne() {
+        let performer = TestPerformer()
+        let lock = NSLock()
+        var times: [Double] = []
+        performer.onPerform = { _, count in
+            lock.lock()
+            times.append(ProcessInfo.processInfo.systemUptime)
+            lock.unlock()
+            if count == 1 { Thread.sleep(forTimeInterval: 0.1) }
+        }
+        let engine = PlaybackEngine(performer: performer, frontmostBundleID: { nil })
+        let actions: [MacroAction] = [.key(1), .key(2, delay: 0.3)]
+        XCTAssertNoThrow(try engine.start(recording: Recording(name: "t", actions: actions), config: PlaybackConfig()))
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if case .finished = engine.state { break }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        lock.lock()
+        let seen = times
+        lock.unlock()
+        XCTAssertEqual(seen.count, 2)
+        guard seen.count == 2 else { return }
+        // On the timeline: 0.3 s after the first started, not 0.3 s after it finished (0.4 s).
+        XCTAssertLessThan(seen[1] - seen[0], 0.37)
+        XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.29)
+    }
+
+    func testPlannedSpanCoversHoldsAndTyping() {
+        var click = MacroAction.click(x: 1, y: 1)
+        click.duration = 0.2
+        var text = MacroAction.text("abcd")
+        text.duration = 0.3
+        let config = PlaybackConfig()
+        XCTAssertEqual(PlaybackTiming.plannedSpan(of: click, config: config), 0.2, accuracy: 1e-9)
+        XCTAssertEqual(PlaybackTiming.plannedSpan(of: text, config: config), 0.3, accuracy: 1e-9)
+        XCTAssertEqual(PlaybackTiming.plannedSpan(of: .key(1), config: config), 0)
+    }
 }

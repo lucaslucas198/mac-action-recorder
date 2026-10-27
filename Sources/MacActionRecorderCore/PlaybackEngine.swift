@@ -265,37 +265,41 @@ public final class PlaybackEngine {
                 return
             }
 
-            // `due` is the ideal wall-clock time of the next movement sample. Scheduling
-            // movement against it (instead of sleeping fixed gaps) stops sleep overshoot from
-            // accumulating, so fast mouse paths stay on speed.
+            // `due` is when the next action should start on the recorded timeline (divided by
+            // the speed). Every action is scheduled against it instead of sleeping a fixed gap,
+            // so waking up late, or an action that took a little longer, is made up in the next
+            // gap instead of pushing everything after it later. A pause moves the timeline on by
+            // the paused time. If playback falls far behind (a busy Mac), the timeline restarts
+            // from now rather than rushing through the following steps.
             var due = Run.now()
+            var lastEnd = due
+
+            /// Sleeps until `due`, but never less than `floor` after the previous action ended.
+            func waitForDue(floor: Double) -> Bool {
+                let target = max(due, lastEnd + floor)
+                if !run.sleep(max(0, target - Run.now())) { return false }
+                due += run.takePausedTime()
+                if Run.now() - due > PlaybackEngine.maxLag { due = Run.now() }
+                return true
+            }
 
             for (offset, action) in actions.enumerated() {
                 // The first `prefixCount` actions (opening a channel, say) run only once.
                 if iteration > 1 && offset < config.prefixCount { continue }
                 let index = firstIndex + offset
                 let isMovement = (action.kind == .move || action.kind == .drag)
+                let delay = PlaybackTiming.scaledDelay(for: action, config: config)
+                due += delay
 
                 if action.kind == .wait {
                     emit(run, .actionStarted(index: index))
-                    if !run.sleep(PlaybackTiming.scaledDelay(for: action, config: config)) { return }
-                    due = Run.now()
+                    if !waitForDue(floor: 0) { return }
+                    lastEnd = Run.now()
                 } else {
-                    let delay = PlaybackTiming.scaledDelay(for: action, config: config)
-                    if isMovement {
-                        due += delay
-                        let remaining = due - Run.now()
-                        if remaining > 0 {
-                            if !run.sleep(remaining) { return }
-                        } else {
-                            if !run.sleep(0) { return }
-                            if remaining < -0.1 { due = Run.now() }
-                        }
-                        if run.takePausedTime() > 0 { due = Run.now() }
-                    } else {
-                        if !run.sleep(delay) { return }
-                        due = Run.now()
-                    }
+                    // Clicks, keys and text never follow the previous step with no gap at all,
+                    // even when catching up.
+                    let floor = isMovement ? 0 : min(delay, PlaybackEngine.minimumGap)
+                    if !waitForDue(floor: floor) { return }
 
                     if let required = config.requiredBundleID,
                        PlaybackTiming.requiresForeground(action.kind),
@@ -310,9 +314,10 @@ public final class PlaybackEngine {
 
                     emit(run, .actionStarted(index: index))
 
+                    var pausedWhileTyping = 0.0
                     do {
                         if action.kind == .text {
-                            if !(try typeOut(action: action, run: run, config: config)) { return }
+                            if !(try typeOut(action: action, run: run, config: config, paused: &pausedWhileTyping)) { return }
                         } else if action.kind == .click {
                             if !(try performClick(action, run: run, config: config)) { return }
                         } else {
@@ -326,7 +331,10 @@ public final class PlaybackEngine {
                         return
                     }
 
-                    if !isMovement { due = Run.now() }
+                    // The time this action was meant to take: the click's hold, the typing.
+                    due += PlaybackTiming.plannedSpan(of: action, config: config) + pausedWhileTyping + run.takePausedTime()
+                    lastEnd = Run.now()
+                    if lastEnd - due > PlaybackEngine.maxLag { due = lastEnd }
                 }
 
                 let completed = Double((iteration - 1) * actions.count + offset + 1)
@@ -357,6 +365,10 @@ public final class PlaybackEngine {
 
     /// Single-click holds longer than this are played as press, interruptible wait, release.
     static let splitHoldAbove = 0.25
+    /// Further behind the timeline than this, playback restarts the timeline from now.
+    static let maxLag = 0.15
+    /// Shortest gap kept before a click, key press or text while catching up.
+    static let minimumGap = 0.01
 
     /// Plays a click with the hold time it was recorded with (when known and switched on).
     /// Returns false if playback was cancelled part-way.
@@ -388,17 +400,24 @@ public final class PlaybackEngine {
         return true
     }
 
-    /// Types text one character at a time with interruptible gaps.
-    /// Returns false if playback was cancelled part-way.
-    private func typeOut(action: MacroAction, run: Run, config: PlaybackConfig) throws -> Bool {
+    /// Types text one character at a time. Each character is scheduled from the start of the
+    /// text, so a late wake-up is not added to every following character. Time spent paused is
+    /// added to `paused`. Returns false if playback was cancelled part-way.
+    private func typeOut(action: MacroAction, run: Run, config: PlaybackConfig, paused: inout Double) throws -> Bool {
         let characters = Array(action.text ?? "")
         let gap = PlaybackTiming.typingDelay(for: action, config: config)
+        var start = Run.now()
         for (offset, character) in characters.enumerated() {
-            if !run.sleep(0) { return false }
-            try performer.perform(MacroAction.text(String(character)))
-            if offset < characters.count - 1 {
-                if !run.sleep(gap) { return false }
+            if offset > 0 {
+                let target = start + Double(offset) * gap
+                if !run.sleep(max(0, target - Run.now())) { return false }
+                let pausedNow = run.takePausedTime()
+                start += pausedNow
+                paused += pausedNow
+            } else if !run.sleep(0) {
+                return false
             }
+            try performer.perform(MacroAction.text(String(character)))
         }
         return true
     }

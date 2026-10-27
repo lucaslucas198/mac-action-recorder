@@ -147,7 +147,21 @@ public enum PlaybackTiming {
         return (hold, gap)
     }
 
-    /// Longest single click hold that is replayed; longer recorded holds are shortened to this.
+    /// How long performing this action is meant to take at the configured speed: the click's hold
+    /// or the time between its first and last typed character. Zero for everything else.
+    public static func plannedSpan(of action: MacroAction, config: PlaybackConfig) -> Double {
+        switch action.kind {
+        case .click:
+            return clickHold(for: action, config: config) ?? 0
+        case .text:
+            let count = (action.text ?? "").count
+            return count > 1 ? Double(count - 1) * typingDelay(for: action, config: config) : 0
+        default:
+            return 0
+        }
+    }
+
+        /// Longest single click hold that is replayed; longer recorded holds are shortened to this.
     public static let maxClickHold = 30.0
 
     /// How long to hold the button for this click at the configured speed, or nil to use the

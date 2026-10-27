@@ -76,7 +76,17 @@ jobs:
 
       - name: Run tests
         shell: pwsh
-        run: dotnet windows/tests/ActionRecorder.Tests/bin/Release/net8.0/ActionRecorder.Tests.dll
+        run: |
+          $out = & dotnet windows/tests/ActionRecorder.Tests/bin/Release/net8.0/ActionRecorder.Tests.dll 2>&1
+          $code = $LASTEXITCODE
+          $out | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) {
+            # Failures as annotations, so they can be read without the full log.
+            $out | Select-String -Pattern '^\s*FAIL' -Context 0,1 | ForEach-Object {
+              Write-Host ("::error::" + $_.Line.Trim() + " :: " + (($_.Context.PostContext | ForEach-Object { $_.Trim() }) -join ' '))
+            }
+          }
+          exit $code
 
       - name: Publish the app
         shell: pwsh
