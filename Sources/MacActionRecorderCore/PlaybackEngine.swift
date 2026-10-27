@@ -386,7 +386,6 @@ public final class PlaybackEngine {
     /// Single-click holds longer than this are played as press, interruptible wait, release.
     static let splitHoldAbove = 0.25
 
-
     /// Plays a click with the hold time it was recorded with (when known and switched on).
     /// Returns false if playback was cancelled part-way.
     private func performClick(_ action: MacroAction, run: Run, config: PlaybackConfig) throws -> Bool {

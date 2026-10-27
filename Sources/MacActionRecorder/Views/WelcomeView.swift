@@ -311,6 +311,8 @@ struct WelcomeView: View {
                 Button("Check Again") { model.recheckInputMonitoring() }
                 Button("Quit and Reopen") { Permissions.relaunch() }
                 Button("Repair…") { confirmRepair = true }
+                Button("Show App in Finder") { Permissions.revealAppInFinder() }
+                    .help("You can also drag the app from this Finder window into the list in System Settings")
             }
             .controlSize(.small)
         }
@@ -548,7 +550,7 @@ private struct PermissionStep: View {
                 if !granted {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("1. Click Open \(listName) Settings. System Settings opens on the right list.")
-                        Text("2. Switch on Mac Action Recorder. Not in the list? Click +, choose Applications > Mac Action Recorder, click Open.")
+                        Text("2. Switch on Mac Action Recorder. Not in the list? Click +, choose Applications > Mac Action Recorder, click Open (or drag the app into the list from Show App in Finder below).")
                         Text("3. If macOS offers Quit & Reopen, click it. This window comes back by itself.")
                     }
                     .font(.caption)
