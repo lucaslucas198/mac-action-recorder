@@ -372,9 +372,14 @@ From the CI input test on shared GitHub macOS 26 virtual machines (not a physica
 | Click hold and typing pace kept, gaps still slept one by one (`650bdeb`) | 1.5 ms | 202.9 ms | 176.3 ms |
 | Timeline scheduling, checks 20 ms early (`b89d3e9`) | 29.6 ms | 47.6 ms | 52.2 ms |
 | Same, three runs at 1× (`adb0cc1`) | 3.9 ms | 33.6, 53.9, 95.3 ms (median 53.9) | 53.5 ms |
-| No main-thread waits during playback (`d6d5ec0`, current) | 6.2 ms | 12.0, 54.3, 226.6 ms (median 54.3) | 42.8 ms |
+| No main-thread waits during playback (`d6d5ec0`) | 6.2 ms | 12.0, 54.3, 226.6 ms (median 54.3) | 42.8 ms |
+| No App Nap while playing or recording (`b785e6f`) | 24.0 ms ¹ | 20.0, 55.2, 64.6 ms (median 55.2) | 54.9 ms |
+| Last 15 ms of each wait on the Mach clock (`ff7271d`) | 0.5 ms | 37.6, 43.9, 45.1 ms (median 43.9) | 37.6 ms |
+| Long waits made in halves (`33187b3`, current) | 0.3 ms | 34.4, 38.3, 38.6 ms (median 38.3) | 40.2 ms |
 
-In the 226.6 ms run, the machine woke playback late in the middle of typing; because that was more than 0.15 s behind, the rest of the macro continued from there (by design, instead of rushing the next steps). The test also logs when the engine handed each step to macOS and when macOS passed it on: macOS passed events on within about 1–10 ms; the remaining differences come from when the virtual machine woke the playback thread. **Not measured:** a physical Mac, where this is expected to be lower but cannot be confirmed from here.
+¹ In that run macOS stamped one test key press 24 ms after the test sent it; the recorder keeps macOS's stamp, so this is the virtual machine's delay in taking the event, not a recording error.
+
+In the 226.6 ms run, the machine woke playback late in the middle of typing; because that was more than 0.15 s behind, the rest of the macro continued from there (by design, instead of rushing the next steps). With the current code the largest difference in a run has stayed under about 40 ms on these machines, and the first letter or the Return was sometimes within 1–6 ms of the recorded time. The test also logs when the engine handed each step to macOS and when macOS passed it on: macOS passed events on within about 1–10 ms; the remaining differences come from when the virtual machine woke the playback thread. **Not measured:** a physical Mac, where this is expected to be lower but cannot be confirmed from here.
 
 What the numbers mean: *recording* is how far the recorded timeline (click, first letter, Return) is from when the input was really sent; *playback* is how far the replayed presses are from the recorded timeline. On a loaded virtual machine the system sometimes wakes the app 50–300 ms late; one late wake-up delays only that one step, because every later step is scheduled on the timeline.
 
