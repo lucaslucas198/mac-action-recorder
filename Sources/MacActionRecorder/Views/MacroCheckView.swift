@@ -140,9 +140,12 @@ struct MacroCheckSheet: View {
         guard let recording = model.current else { return }
         isWorking = true
         aiError = nil
+        reviewText = ""
         AIActivity.shared.run { @MainActor in
             do {
-                reviewText = try await AIAssistant.review(recording, profile: model.aiProfile)
+                reviewText = try await AIAssistant.review(recording, profile: model.aiProfile) { partial in
+                    reviewText = partial
+                }
             } catch {
                 aiError = AIAssistant.describe(error)
             }
@@ -248,9 +251,12 @@ struct LastStopSection: View {
         guard let reason = model.lastSafetyStop else { return }
         isWorking = true
         errorText = nil
+        explanation = ""
         AIActivity.shared.run { @MainActor in
             do {
-                explanation = try await AIAssistant.explainStop(reason)
+                explanation = try await AIAssistant.explainStop(reason) { partial in
+                    explanation = partial
+                }
             } catch {
                 errorText = AIAssistant.describe(error)
             }
@@ -349,9 +355,12 @@ struct DiscordCoachSection: View {
         isWorking = true
         errorText = nil
         let notes = model.settings.discord.promptContext
+        tips = ""
         AIActivity.shared.run { @MainActor in
             do {
-                tips = try await AIAssistant.discordTips(for: recording, profile: notes)
+                tips = try await AIAssistant.discordTips(for: recording, profile: notes) { partial in
+                    tips = partial
+                }
             } catch {
                 errorText = AIAssistant.describe(error)
             }

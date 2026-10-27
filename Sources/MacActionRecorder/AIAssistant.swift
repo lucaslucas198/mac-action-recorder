@@ -142,9 +142,10 @@ enum AIAssistant {
         return AIMacroDrafter.parse(reply)
     }
 
-    static func review(_ recording: Recording, profile: String? = nil) async throws -> String {
+    /// `onPartial` receives the answer as it is written, so it can be shown word by word.
+    static func review(_ recording: Recording, profile: String? = nil, onPartial: (@MainActor (String) -> Void)? = nil) async throws -> String {
         let summary = MacroSummary.text(for: recording)
-        return try await respond(instructions: reviewInstructions, prompt: "Review this macro.\n\n" + summary + profileBlock(profile))
+        return try await streamText(instructions: reviewInstructions, prompt: "Review this macro.\n\n" + summary + profileBlock(profile), onPartial: onPartial)
     }
 
     private static let tipsInstructions = """
@@ -158,11 +159,12 @@ enum AIAssistant {
     """
 
     /// Text-only suggestions that tie the macro to the user's Discord profile. Changes nothing.
-    static func discordTips(for recording: Recording, profile: String) async throws -> String {
+    static func discordTips(for recording: Recording, profile: String, onPartial: (@MainActor (String) -> Void)? = nil) async throws -> String {
         let summary = MacroSummary.text(for: recording)
-        return try await respond(
+        return try await streamText(
             instructions: tipsInstructions,
-            prompt: "The user's notes:\n" + profile + "\n\nTheir macro:\n" + summary
+            prompt: "The user's notes:\n" + profile + "\n\nTheir macro:\n" + summary,
+            onPartial: onPartial
         )
     }
 
@@ -174,8 +176,8 @@ enum AIAssistant {
     """
 
     /// A plain-words explanation of a safety stop. The stop itself never depends on this.
-    static func explainStop(_ message: String) async throws -> String {
-        return try await respond(instructions: explainInstructions, prompt: "The app's message: " + message)
+    static func explainStop(_ message: String, onPartial: (@MainActor (String) -> Void)? = nil) async throws -> String {
+        return try await streamText(instructions: explainInstructions, prompt: "The app's message: " + message, onPartial: onPartial)
     }
 
     private static func profileBlock(_ profile: String?) -> String {
@@ -230,6 +232,41 @@ enum AIAssistant {
         throw AIAssistantError.unavailable(availability.message)
     }
 
+    /// Like `respond`, but hands each growing part of the answer to `onPartial` while it is written,
+    /// so free-text answers appear word by word instead of all at once at the end.
+    private static func streamText(
+        instructions: String,
+        prompt: String,
+        maxTokens: Int = 600,
+        onPartial: (@MainActor (String) -> Void)?
+    ) async throws -> String {
+        guard let onPartial = onPartial else {
+            return try await respond(instructions: instructions, prompt: prompt, maxTokens: maxTokens)
+        }
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            guard availability.isAvailable else {
+                throw AIAssistantError.unavailable(availability.message)
+            }
+            let trimmed = String(prompt.prefix(6000))
+            return try await withTimeLimit(seconds: timeLimit) {
+                let session = LanguageModelSession(instructions: instructions)
+                let options = GenerationOptions(temperature: 0.2, maximumResponseTokens: maxTokens)
+                var latest = ""
+                for try await snapshot in session.streamResponse(to: trimmed, options: options) {
+                    latest = snapshot.content
+                    let shown = latest
+                    await onPartial(shown)
+                }
+                let text = latest.trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.isEmpty { throw AIAssistantError.emptyReply }
+                return text
+            }
+        }
+        #endif
+        throw AIAssistantError.unavailable(availability.message)
+    }
+
     /// Runs `work`, but gives up after `seconds` or when the calling task is cancelled.
     private static func withTimeLimit<T>(seconds: Int, _ work: @escaping () async throws -> T) async throws -> T {
         let holder = ResumerHolder<T>()
@@ -276,16 +313,21 @@ final class AIActivity: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var startedAt = Date()
     private var task: Task<Void, Never>?
+    private var current = UUID()
 
-    /// Runs `body` as the current AI request.
+    /// Runs `body` as the current AI request. Starting another one stops this one.
     func run(_ body: @escaping @MainActor () async -> Void) {
         task?.cancel()
+        let id = UUID()
+        current = id
         startedAt = Date()
         isRunning = true
         task = Task { @MainActor [weak self] in
             await body()
-            self?.isRunning = false
-            self?.task = nil
+            // A request that was replaced must not mark the newer one as finished.
+            guard let self = self, self.current == id else { return }
+            self.isRunning = false
+            self.task = nil
         }
     }
 
