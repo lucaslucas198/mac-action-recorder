@@ -198,7 +198,7 @@ Coordinate-based playback **can fail** whenever the interface or screen layout c
 
 This app does not and cannot promise perfect replay.
 
-## Accuracy, safety stop and Discord (0.5.0)
+## Accuracy, safety stop and Discord
 
 **Can it be 100% accurate? No.** Playback repeats clicks at recorded screen positions and does not look at the screen. It cannot know whether a button is still there. What this version does is remove the causes it can measure and stop when something is certainly wrong:
 
@@ -210,7 +210,9 @@ This app does not and cannot promise perfect replay.
 | Window resized, app quit, display changed | The run stops with a message (Settings > Safety). It never guesses. |
 | Another app took focus | Stops (on by default: *Only play while the recorded app is in front*). |
 | App not in front or closed at the start | Brings it to the front, and opens it if closed (Settings > Playback). |
-| Clicks too fast for an app | Adjustable pause before a click, button hold time, double-click gap and key hold time. |
+| Clicks shortened, typing at a different pace | Each click is held as long as it was recorded and text is typed at the recorded pace (since 0.6.0; Settings > Playback > *Match the recording*). |
+| Small delays adding up over a long macro | Every step is scheduled on the recorded timeline, so a late step is made up in the next gap (since 0.6.0). |
+| Clicks too fast for an app | Adjustable pause before a click, button hold time, double-click gap and key hold time (used for steps added by hand). |
 
 What it **cannot** detect: a button that moved inside the window, a message that failed to send, a pop-up. The AI cannot see your screen either, so it is **not** used to decide whether to stop. It is used only to explain a stop in plain words (Check > Why the last run was stopped) and to personalize suggestions. Test every macro slowly first.
 
@@ -224,8 +226,8 @@ What it **cannot** detect: a button that moved inside the window, a message that
 
 These are design limits, not bugs. Items marked **untested** have not been observed on a real Mac yet.
 
-- **Recording and playback have not been tried on a real Mac yet.** Only the build and the core-logic unit tests have been run.
-- Recording fidelity is below playback fidelity. With *Use the exact time macOS stamps on each event* on (the default since 0.5.0) gaps follow the system's event times, which is more exact than before but was **not measured** on a real Mac. With it off, events are timestamped when the app receives them, which can be off by a few milliseconds, more if the Mac is busy.
+- **Recording and playback have not been tried on a physical Mac yet.** They run on GitHub's macOS virtual machines in CI (see [Verification status](#verification-status)), which uses the same macOS event system but no real mouse, keyboard or Discord.
+- Timing: with *Use the exact time macOS stamps on each event* on (the default), the recording keeps the system's own event times, even when the app reads an event late. Playback can only be as punctual as macOS wakes it; on a busy Mac a step can run late, and a step that is more than 0.15 s behind restarts the timeline from there rather than rushing the next steps. See [Measured timing](#measured-timing).
 - Mouse movement is sampled (default: at most every 30 ms and 3 points apart). Playback reproduces the path approximately, not pixel for pixel.
 - Scroll events within 80 ms of each other are combined into one action.
 - Typed text is replayed as characters, independent of keyboard layout. Dead-key sequences and input methods (Chinese/Japanese/Korean IMEs, emoji picker) may not record as intended. Shortcuts are replayed by key code.
@@ -349,16 +351,24 @@ The results of the last CI run (pictures and reports) are in the [`ci-screenshot
 
 | Item | Status |
 | --- | --- |
-| Code compiles | **Verified** by GitHub Actions for version 0.3.0: debug build on macOS 14 (Xcode 15), and the release app build on macOS 26 (current Xcode) including the on-device AI code. Earlier, an install from source was also built on macOS 27.2 / Swift 6.4. |
-| Unit tests pass | **Verified** by GitHub Actions on macOS 14 for 0.3.0 (`swift test` succeeded; the run log was not inspected for a test count). Earlier: 155 tests passed on the author's Mac. They cover only the core logic. |
+| Code compiles | **Verified** by GitHub Actions on every push: debug build on macOS 15 (Xcode 16), and the release app build on macOS 26 (current Xcode) including the on-device AI code (word-by-word answers included). |
+| Unit tests pass | **Verified** by GitHub Actions on macOS 15 on every push (`swift test`; failures are shown as annotations). They cover the core logic, including the timeline rules, without a clock. |
 | Disk image and update zip | **Built and structurally checked** by GitHub Actions (disk image mounts; contains the app and an Applications link; app signature verifies; helper scripts are inside). **Not yet opened or installed on a real Mac by the author.** |
-| Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
+| Recording and playback | **Run on a GitHub macOS 26 virtual machine on every push** (`--selftest-input`, report `input-selftest-output.txt` in the `ci-screenshots-mac` branch): the real recorder records a click, the word "hello" and Return sent to TextEdit as hardware-like events, then the real playback engine replays it at 1× and 2× while a separate listener measures when each press really happened. Results are listed under [Measured timing](#measured-timing). **Not covered:** a physical Mac with a real mouse and keyboard, Discord, other keyboard layouts, multiple displays. |
 | Welcome screen, Set Up This Mac, release-based update, local re-signing | **Compiles. Not run.** Whether permissions survive an update after local re-signing is the design intent, not an observed result. |
 | Check macro, Improve, Draft with AI, AI review, Show Clicks, Play Macro menu, permission rescue buttons | **Compiles.** Core rules have unit tests. The interface and the AI calls (Apple's Foundation Models) have not been exercised in the running app by me. |
 | Window follow, safety stop, bring-to-front, open-channel-first, Add and Pick on screen, new Settings tabs, Discord coach (0.5.0) | **Compiles, and the core rules have unit tests** (window shift and resize rules, every stop rule, prefix steps, settings, profile, new checks). **None of it has been run on a real Mac.** In particular untested: reading window positions, launching Discord, the Quick Switcher step, and the screen picker overlay on multiple displays. |
 | Install and one-copy machinery (0.6.0) | **Run for real on a GitHub macOS 26 runner on every push** (`--selftest-install`, report in the `ci-screenshots-mac` branch): finds and ejects a mounted Mac Action Recorder disk image; signs a copy with a newly created local certificate (requirement `certificate leaf`, identical when signed again); the signed copy starts and passes `codesign --verify`; the swap helper waits for the old process, replaces the app and leaves nothing behind; the reopen helper waits; a stray copy found by Spotlight is moved to the Trash while the kept and the running copy stay; a second copy opened while one is running quits by itself and leaves the first running; `mdfind` and `tccutil reset` run. The runner uses a throw-away keychain, so the macOS prompt a real Mac may show ("codesign wants to use a key") is **not** covered. Also run end to end on the runner (`--selftest-setup`): the app is opened from the mounted disk image, setup copies, signs, installs into `/Applications` and reopens; the reopened copy ejects the disk image, moves a stray copy to the Trash, clears permission entries, and pictures its own window (`setup-e2e.png`). Not covered: a real login keychain (the prompt it may show), switching the permissions on in System Settings, and the rule that a newer or installed copy wins over an older one (unit tests only). |
 | Layout (0.6.0) | **Checked in screenshots** that CI renders on every push (`--screenshots`, published to the `ci-screenshots-mac` branch): welcome, setup (start, running, finished, permissions needed), main window at 960×700, 1040×780 and 1440×900, dark mode, Check sheet, Add sheet, every Settings tab. They are drawn off screen, so window chrome, the Settings tab bar and animations are not shown. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
+
+#### Measured timing
+
+From the CI input test on shared GitHub macOS 26 virtual machines (not a physical Mac). The machines are sometimes heavily loaded, so results vary from run to run; each line is one run.
+
+MEASURED_TIMING_PLACEHOLDER
+
+What the numbers mean: *recording* is how far the recorded timeline (click, first letter, Return) is from when the input was really sent; *playback* is how far the replayed presses are from the recorded timeline. On a loaded virtual machine the system sometimes wakes the app 50–300 ms late; one late wake-up delays only that one step, because every later step is scheduled on the timeline.
 
 Manual checklist (not done yet):
 

@@ -9,8 +9,9 @@ on:
 jobs:
   # Builds and tests the code on a runner with an older Xcode. The on-device AI code is compiled
   # out there (its framework needs the macOS 26 SDK), so this job checks everything else.
+  # (macOS 14 runners were often not available any more, so this uses macOS 15.)
   build-and-test:
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
@@ -180,7 +181,6 @@ jobs:
   # Builds the app the way users download it: a .dmg to drag into Applications, plus a .zip that
   # the in-app updater uses. Runs on the newest runner so the AI features are compiled in.
   package:
-    needs: build-and-test
     runs-on: macos-26
     permissions:
       contents: write   # only used to publish screenshots to the ci-screenshots-mac branch on pushes to main
@@ -345,7 +345,7 @@ jobs:
     # The app is ad-hoc signed and NOT notarized (no Apple Developer credentials are used here).
     # See README > "Code signing and notarization".
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [package, windows-build-and-test]
+    needs: [build-and-test, package, windows-build-and-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
