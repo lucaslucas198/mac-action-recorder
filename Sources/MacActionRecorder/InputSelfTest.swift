@@ -83,17 +83,17 @@ enum InputSelfTest {
         if startError != nil { finish(folder) }
         Thread.sleep(forTimeInterval: 0.5)
 
-        let gapAfterClick = 0.40
-        let gapBetweenKeys = 0.12
-        postClick(at: target)
-        Thread.sleep(forTimeInterval: gapAfterClick)
+        // The moment each press was really sent, to compare with what the recorder measured.
+        var sent: [Double] = []
+        sent.append(postClick(at: target))
+        Thread.sleep(forTimeInterval: 0.40)
         // h e l l o, then Return
         for code in [4, 14, 37, 37, 31] {
-            postKey(code)
-            Thread.sleep(forTimeInterval: gapBetweenKeys)
+            sent.append(postKey(code))
+            Thread.sleep(forTimeInterval: 0.12)
         }
         Thread.sleep(forTimeInterval: 0.3)
-        postKey(36)
+        sent.append(postKey(36))
         Thread.sleep(forTimeInterval: 0.6)
 
         let output = Platform.onMain { recorder.stop() }
@@ -117,15 +117,25 @@ enum InputSelfTest {
         check(output.targetApp?.bundleID == "com.apple.TextEdit", "TextEdit was recorded as the target app")
         check(output.targetWindow != nil, "the TextEdit window position was saved")
 
-        if let clickIndex = actions.firstIndex(where: { $0.kind == .click }), clickIndex + 1 < actions.count {
-            let measured = actions[clickIndex + 1].delay
-            log(String(format: "Gap after the click: sent %.3f s, recorded %.3f s", gapAfterClick, measured))
-            check(abs(measured - gapAfterClick) <= 0.05, "the gap after the click was recorded within 50 ms")
+        // Recording accuracy: the gap between the click and the first letter, and between the last
+        // letter and Return, as sent and as recorded.
+        if sent.count == 7, let clickIndex = actions.firstIndex(where: { $0.kind == .click }),
+           clickIndex + 2 < actions.count {
+            let sentClickToText = sent[1] - sent[0]
+            let recordedClickToText = actions[clickIndex + 1].delay
+            let sentTextToReturn = sent[6] - sent[5]
+            let recordedTextToReturn = actions[clickIndex + 2].delay
+            let worst = max(abs(sentClickToText - recordedClickToText), abs(sentTextToReturn - recordedTextToReturn))
+            log(String(format: "Click to first letter: sent %.4f s, recorded %.4f s", sentClickToText, recordedClickToText))
+            log(String(format: "Last letter to Return: sent %.4f s, recorded %.4f s", sentTextToReturn, recordedTextToReturn))
+            log(String(format: "Largest timing error while recording: %.1f ms", worst * 1000))
+            check(worst <= 0.02, "gaps were recorded within 20 ms of when the input was really sent")
         }
 
+        // TextEdit may capitalise the first letter by itself, so compare without case.
         let before = documentText(of: app) ?? ""
         log("Document after recording: \(before.debugDescription)")
-        check(before == "hello\n", "the document holds what was typed while recording")
+        check(before.lowercased() == "hello\n", "the document holds what was typed while recording")
 
         // 3. Replay at 1× and 2×, measuring how long it takes.
         var recording = Recording(name: "selftest", targetApp: output.targetApp, recordedScreen: Platform.primaryDisplaySize(), targetWindow: output.targetWindow, actions: actions)
@@ -160,7 +170,7 @@ enum InputSelfTest {
 
         let after = documentText(of: app) ?? ""
         log("Document after playback: \(after.debugDescription)")
-        check(after == "hello\nhello\nhello\n", "playback at 1× and 2× typed the same text into the same document")
+        check(after.lowercased() == "hello\nhello\nhello\n", "playback at 1× and 2× typed the same text into the same document")
 
         // Leave TextEdit without asking to save.
         _ = Platform.onMain { app.forceTerminate() }
@@ -169,20 +179,28 @@ enum InputSelfTest {
 
     // MARK: Sending events like hardware does (no marker, so the recorder sees them)
 
-    private static func postClick(at point: CGPoint) {
+    /// Returns the moment the button press was sent.
+    @discardableResult
+    private static func postClick(at point: CGPoint) -> Double {
         let source = CGEventSource(stateID: .hidSystemState)
         CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.05)
+        let pressed = ProcessInfo.processInfo.systemUptime
         CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.03)
         CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+        return pressed
     }
 
-    private static func postKey(_ code: Int) {
+    /// Returns the moment the key press was sent.
+    @discardableResult
+    private static func postKey(_ code: Int) -> Double {
         let source = CGEventSource(stateID: .hidSystemState)
+        let pressed = ProcessInfo.processInfo.systemUptime
         CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(code), keyDown: true)?.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.02)
         CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(code), keyDown: false)?.post(tap: .cghidEventTap)
+        return pressed
     }
 
     // MARK: Reading the document back

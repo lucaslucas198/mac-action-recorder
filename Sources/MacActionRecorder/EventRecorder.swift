@@ -240,12 +240,20 @@ final class EventRecorder {
         }
     }
 
+    /// True when the event at `point` goes to one of this app's own windows (for example the Stop
+    /// button). Being inside the area of one of our windows is not enough: another app's window may
+    /// be in front of it there, and then the click belongs to that app and must be recorded.
     private func isInsideOwnWindow(_ point: CGPoint) -> Bool {
         let now = ProcessInfo.processInfo.systemUptime
         if now - framesCachedAt > 0.25 {
             cachedFrames = Platform.ownWindowFrames()
             framesCachedAt = now
         }
-        return cachedFrames.contains { $0.contains(point) }
+        guard cachedFrames.contains(where: { $0.contains(point) }) else { return false }
+        // Which window is really in front at this point (Cocoa coordinates, origin bottom-left)?
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let cocoaPoint = NSPoint(x: point.x, y: primaryHeight - point.y)
+        let number = NSWindow.windowNumber(at: cocoaPoint, belowWindowWithWindowNumber: 0)
+        return NSApp.window(withWindowNumber: number) != nil
     }
 }
