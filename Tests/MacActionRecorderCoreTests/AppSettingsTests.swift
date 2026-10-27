@@ -22,7 +22,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.defaultRepeatCount, 1)
         XCTAssertEqual(settings.defaultLoopDelay, 0)
         XCTAssertTrue(settings.autoSave)
-        XCTAssertFalse(settings.verifyForeground)
+        XCTAssertTrue(settings.verifyForeground)
         XCTAssertEqual(settings.emergencyStop, HotKey.defaultEmergencyStop)
         XCTAssertEqual(settings.emergencyStop.displayString, "⌃⌥⌘S")
         XCTAssertTrue(settings.recording.includeMouseMove)

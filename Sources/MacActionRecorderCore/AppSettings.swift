@@ -1,5 +1,120 @@
 import Foundation
 
+/// How exactly clicks and key presses are sent. The defaults suit most apps; raise them if an
+/// app (or Discord's hover menus) misses fast input.
+public struct InputTiming: Codable, Equatable {
+    /// Wait after moving the pointer onto a click position, before pressing (hover state settles).
+    public var settleBeforeClick = 0.012
+    /// How long a mouse button stays down for a click.
+    public var clickHold = 0.010
+    /// Gap between the clicks of a double or triple click.
+    public var doubleClickGap = 0.030
+    /// How long a key stays down for a key press.
+    public var keyHold = 0.008
+
+    public init() {}
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        settleBeforeClick = c.value(.settleBeforeClick, settleBeforeClick)
+        clickHold = c.value(.clickHold, clickHold)
+        doubleClickGap = c.value(.doubleClickGap, doubleClickGap)
+        keyHold = c.value(.keyHold, keyHold)
+    }
+
+    func sanitized() -> InputTiming {
+        var t = self
+        t.settleBeforeClick = Num.clamp(t.settleBeforeClick, 0...1)
+        t.clickHold = Num.clamp(t.clickHold, 0.001...1)
+        t.doubleClickGap = Num.clamp(t.doubleClickGap, 0.005...1)
+        t.keyHold = Num.clamp(t.keyHold, 0.001...1)
+        return t
+    }
+}
+
+/// What the app knows about how you use Discord. It is used to make the Discord presets and the
+/// optional on-device AI suggestions fit you. It is stored only on this Mac.
+public struct DiscordProfile: Codable, Equatable {
+    /// Channels or people you open often (typed into Discord's Quick Switcher).
+    public var favoriteChannels: [String] = []
+    /// Messages you send often.
+    public var messageTemplates: [String] = []
+    /// The shortest gap you want between messages. Discord can rate-limit fast senders.
+    public var minSecondsBetweenMessages = 4.0
+    /// Free text about what you use macros for ("moderating a server, welcoming new members").
+    public var about = ""
+    /// Rules that only apply to you ("never type @everyone", "server needs 10 s between posts").
+    public var rules = ""
+
+    public init() {}
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        favoriteChannels = c.value(.favoriteChannels, favoriteChannels)
+        messageTemplates = c.value(.messageTemplates, messageTemplates)
+        minSecondsBetweenMessages = c.value(.minSecondsBetweenMessages, minSecondsBetweenMessages)
+        about = c.value(.about, about)
+        rules = c.value(.rules, rules)
+    }
+
+    func sanitized() -> DiscordProfile {
+        var p = self
+        p.minSecondsBetweenMessages = Num.clamp(p.minSecondsBetweenMessages, 0...3600)
+        p.favoriteChannels = Array(p.favoriteChannels.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }.prefix(30))
+        p.messageTemplates = Array(p.messageTemplates.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }.prefix(30))
+        p.about = String(p.about.prefix(600))
+        p.rules = String(p.rules.prefix(600))
+        return p
+    }
+
+    /// A short block of text for the AI prompt (always includes the message spacing).
+    public var promptContext: String {
+        var lines: [String] = []
+        if !favoriteChannels.isEmpty {
+            lines.append("Channels or people the user opens often: " + favoriteChannels.joined(separator: ", ") + ".")
+        }
+        if !messageTemplates.isEmpty {
+            lines.append("Messages the user sends often: " + messageTemplates.map { "\"\($0)\"" }.joined(separator: "; ") + ".")
+        }
+        lines.append("The user wants at least \(Int(minSecondsBetweenMessages.rounded())) seconds between messages.")
+        let trimmedAbout = about.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedAbout.isEmpty { lines.append("What the user uses Discord macros for: " + trimmedAbout) }
+        let trimmedRules = rules.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedRules.isEmpty { lines.append("The user's own rules: " + trimmedRules) }
+        return lines.joined(separator: "\n")
+    }
+}
+
+public enum AppearanceMode: String, Codable, CaseIterable, Equatable {
+    case system
+    case light
+    case dark
+
+    public var label: String {
+        switch self {
+        case .system: return "Match the system"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
+public enum RowDensity: String, Codable, CaseIterable, Equatable {
+    case comfortable
+    case compact
+
+    public var label: String {
+        switch self {
+        case .comfortable: return "Comfortable"
+        case .compact: return "Compact"
+        }
+    }
+}
+
 /// All persistent app configuration. Stored as JSON so it is easy to inspect and transfer.
 /// Every field has a default and unknown/missing keys are tolerated, so settings files written
 /// by older or newer versions still load.
@@ -21,9 +136,36 @@ public struct AppSettings: Codable, Equatable {
     public var minActionDelay = 0.02
     public var typingCharDelay = 0.012
     public var emergencyStop = HotKey.defaultEmergencyStop
-    public var verifyForeground = false
+    public var verifyForeground = true
     public var confirmBeforePlay = false
     public var hideWindowDuringPlayback = true
+    /// Bring the app a macro was recorded in (for example Discord) to the front before playing.
+    public var bringTargetToFront = true
+    /// Start the target app first if it is not running.
+    public var launchTargetIfClosed = true
+    /// If the target window has moved since recording, shift the recorded clicks to match.
+    public var followTargetWindow = true
+    /// Put the pointer back where it was when playback ends.
+    public var restorePointerAfterPlayback = false
+    /// Play a short sound when recording or playback starts, finishes or stops by itself.
+    public var soundEffects = false
+    public var inputTiming = InputTiming()
+    /// Global shortcut that pauses and resumes playback.
+    public var pauseHotKey = HotKey.defaultPause
+    public var safety = SafetyOptions()
+
+    // Discord
+    public var discord = DiscordProfile()
+    /// Use the Discord profile when asking the on-device AI for suggestions.
+    public var aiUsesDiscordProfile = true
+
+    // Appearance and editing
+    public var appearance = AppearanceMode.system
+    public var rowDensity = RowDensity.comfortable
+    public var showDelaysInList = true
+    public var confirmBeforeDelete = true
+    /// Prefix for the names of new recordings.
+    public var newMacroNamePrefix = "Recording"
 
     // Storage
     /// nil = the default folder inside Application Support.
@@ -67,6 +209,21 @@ public struct AppSettings: Codable, Equatable {
         verifyForeground = c.value(.verifyForeground, verifyForeground)
         confirmBeforePlay = c.value(.confirmBeforePlay, confirmBeforePlay)
         hideWindowDuringPlayback = c.value(.hideWindowDuringPlayback, hideWindowDuringPlayback)
+        bringTargetToFront = c.value(.bringTargetToFront, bringTargetToFront)
+        launchTargetIfClosed = c.value(.launchTargetIfClosed, launchTargetIfClosed)
+        followTargetWindow = c.value(.followTargetWindow, followTargetWindow)
+        restorePointerAfterPlayback = c.value(.restorePointerAfterPlayback, restorePointerAfterPlayback)
+        soundEffects = c.value(.soundEffects, soundEffects)
+        inputTiming = c.value(.inputTiming, inputTiming)
+        pauseHotKey = c.value(.pauseHotKey, pauseHotKey)
+        safety = c.value(.safety, safety)
+        discord = c.value(.discord, discord)
+        aiUsesDiscordProfile = c.value(.aiUsesDiscordProfile, aiUsesDiscordProfile)
+        appearance = c.value(.appearance, appearance)
+        rowDensity = c.value(.rowDensity, rowDensity)
+        showDelaysInList = c.value(.showDelaysInList, showDelaysInList)
+        confirmBeforeDelete = c.value(.confirmBeforeDelete, confirmBeforeDelete)
+        newMacroNamePrefix = c.value(.newMacroNamePrefix, newMacroNamePrefix)
         saveDirectoryPath = c.optionalValue(.saveDirectoryPath, saveDirectoryPath)
         autoSave = c.value(.autoSave, autoSave)
         exportDirectoryPath = c.optionalValue(.exportDirectoryPath, exportDirectoryPath)
@@ -92,6 +249,14 @@ public struct AppSettings: Codable, Equatable {
         s.minActionDelay = Num.clamp(s.minActionDelay, 0...5)
         s.typingCharDelay = Num.clamp(s.typingCharDelay, 0...1)
         s.backupKeepCount = Num.clamp(s.backupKeepCount, 1...100)
+        s.inputTiming = s.inputTiming.sanitized()
+        s.discord = s.discord.sanitized()
+        let prefix = s.newMacroNamePrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        s.newMacroNamePrefix = prefix.isEmpty ? "Recording" : String(prefix.prefix(40))
+        if s.pauseHotKey.keyCode < 0 || s.pauseHotKey.keyCode > RecordingValidator.maxKeyCode
+            || s.pauseHotKey.modifiers.isEmpty || s.pauseHotKey == s.emergencyStop {
+            s.pauseHotKey = HotKey.defaultPause
+        }
         if s.emergencyStop.keyCode < 0 || s.emergencyStop.keyCode > RecordingValidator.maxKeyCode
             || s.emergencyStop.modifiers.isEmpty {
             s.emergencyStop = HotKey.defaultEmergencyStop

@@ -76,15 +76,25 @@ public enum PlaybackEvent: Equatable {
 public final class PlaybackEngine {
     private let performer: ActionPerformer
     private let frontmostBundleID: () -> String?
+    private let safetyCheck: (ActionKind?) -> String?
     private let lock = NSLock()
     private var currentRun: Run?
     private var currentState: PlaybackState = .idle
     private var handler: ((PlaybackEvent) -> Void)?
     private var lastStart: (recording: Recording, config: PlaybackConfig)?
 
-    public init(performer: ActionPerformer, frontmostBundleID: @escaping () -> String? = { nil }) {
+    /// - Parameter safetyCheck: called on the playback thread just before each action that sends
+    ///   input (and once at the start of every repetition, with `nil`). Returning text stops the
+    ///   run with that text as the failure message. It must only return a reason when the caller
+    ///   is certain that continuing would be wrong.
+    public init(
+        performer: ActionPerformer,
+        frontmostBundleID: @escaping () -> String? = { nil },
+        safetyCheck: @escaping (ActionKind?) -> String? = { _ in nil }
+    ) {
         self.performer = performer
         self.frontmostBundleID = frontmostBundleID
+        self.safetyCheck = safetyCheck
     }
 
     public var onEvent: ((PlaybackEvent) -> Void)? {
@@ -136,6 +146,7 @@ public final class PlaybackEngine {
         effective.countdown = max(0, config.countdown)
 
         let slice = Array(all[lower..<upper])
+        effective.prefixCount = max(0, min(config.prefixCount, slice.count))
         let run = Run()
         let initialState: PlaybackState = effective.countdown > 0 ? .countdown(effective.countdown) : .playing
 
@@ -244,6 +255,10 @@ public final class PlaybackEngine {
                 fail(run, foregroundMessage(config))
                 return
             }
+            if let reason = safetyCheck(nil) {
+                fail(run, reason)
+                return
+            }
 
             // `due` is the ideal wall-clock time of the next movement sample. Scheduling
             // movement against it (instead of sleeping fixed gaps) stops sleep overshoot from
@@ -251,6 +266,8 @@ public final class PlaybackEngine {
             var due = Run.now()
 
             for (offset, action) in actions.enumerated() {
+                // The first `prefixCount` actions (opening a channel, say) run only once.
+                if iteration > 1 && offset < config.prefixCount { continue }
                 let index = firstIndex + offset
                 let isMovement = (action.kind == .move || action.kind == .drag)
 
@@ -279,6 +296,10 @@ public final class PlaybackEngine {
                        PlaybackTiming.requiresForeground(action.kind),
                        frontmostBundleID() != required {
                         fail(run, foregroundMessage(config))
+                        return
+                    }
+                    if PlaybackTiming.requiresForeground(action.kind), let reason = safetyCheck(action.kind) {
+                        fail(run, reason)
                         return
                     }
 

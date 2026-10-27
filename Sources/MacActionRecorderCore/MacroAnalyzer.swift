@@ -57,7 +57,8 @@ public enum MacroAnalyzer {
         recording: Recording,
         playback: PlaybackDefaults,
         verifyForeground: Bool,
-        currentScreen: ScreenSize?
+        currentScreen: ScreenSize?,
+        discord: DiscordProfile? = nil
     ) -> [MacroFinding] {
         let actions = recording.actions
         guard !actions.isEmpty else { return [] }
@@ -97,14 +98,62 @@ public enum MacroAnalyzer {
                 && ($0.modifiers ?? []).isEmpty
         }
         let repeatsALot = playback.repeatCount == 0 || playback.repeatCount >= 5
-        if hasText && hasPlainReturn && repeatsALot && playback.loopDelay < minLoopDelay {
+        // With a Discord profile, the user's own minimum spacing replaces the built-in default.
+        let messageGap = discord?.minSecondsBetweenMessages ?? minLoopDelay
+        if hasText && hasPlainReturn && repeatsALot && playback.loopDelay < messageGap {
+            let suggested = max(suggestedLoopDelay, messageGap.rounded(.up))
             findings.append(MacroFinding(
                 id: "rapid-messages",
                 severity: .warning,
                 title: "This may send messages very quickly",
-                detail: "The macro types text and presses Return, and repeats \(playback.repeatCount == 0 ? "until stopped" : "\(playback.repeatCount) times") with less than \(Int(minLoopDelay)) seconds between repetitions. Sending many messages fast can be treated as spam, and Discord may rate-limit or restrict the account. Add a longer delay between repetitions.",
-                fix: .setLoopDelay(seconds: suggestedLoopDelay),
-                fixLabel: "Set \(Int(suggestedLoopDelay)) s between repeats"
+                detail: "The macro types text and presses Return, and repeats \(playback.repeatCount == 0 ? "until stopped" : "\(playback.repeatCount) times") with less than \(Int(messageGap)) seconds between repetitions\(discord == nil ? "" : " (your Discord setting)"). Sending many messages fast can be treated as spam, and Discord may rate-limit or restrict the account. Add a longer delay between repetitions.",
+                fix: .setLoopDelay(seconds: suggested),
+                fixLabel: "Set \(Int(suggested)) s between repeats"
+            ))
+        }
+
+        // Discord-specific checks (these use what the user told the app about how they use Discord).
+        if let discord = discord {
+            let closePairs = closeMessageCount(actions, minimumGap: discord.minSecondsBetweenMessages)
+            if closePairs > 0 {
+                findings.append(MacroFinding(
+                    id: "messages-too-close",
+                    severity: .warning,
+                    title: "Messages are sent closer together than you want",
+                    detail: "\(closePairs) message(s) in this macro are sent less than \(Int(discord.minSecondsBetweenMessages)) seconds after the one before (your minimum in Settings > Discord). Add a wait between them.",
+                    fix: nil,
+                    fixLabel: nil
+                ))
+            }
+        }
+
+        let mentionsEveryone = actions.contains {
+            guard $0.kind == .text, let text = $0.text?.lowercased() else { return false }
+            return text.contains("@everyone") || text.contains("@here")
+        }
+        if mentionsEveryone {
+            findings.append(MacroFinding(
+                id: "mass-mention",
+                severity: .warning,
+                title: "This macro pings everyone",
+                detail: "Typed text contains @everyone or @here. Repeating a mass ping is the fastest way to annoy a server and get restricted. Check that this is really what you want, and do not loop it."
+            ))
+        }
+
+        let opensQuickSwitcher = actions.contains {
+            $0.kind == .key && $0.keyCode == KeyCodes.ansiK && ($0.modifiers ?? []).contains(.command)
+        }
+        let hasStartChannel = !(recording.startChannel ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        if hasText && hasPlainReturn && !opensQuickSwitcher && !hasStartChannel {
+            var detail = "Nothing in this macro chooses a channel, so the message goes to whichever channel Discord has open. Set \"Open this channel first\" for the macro, or insert the Quick Switcher preset."
+            if let discord = discord, !discord.favoriteChannels.isEmpty {
+                detail += " Your channels: " + discord.favoriteChannels.prefix(5).joined(separator: ", ") + "."
+            }
+            findings.append(MacroFinding(
+                id: "no-channel",
+                severity: .info,
+                title: "No channel is selected first",
+                detail: detail
             ))
         }
 
@@ -172,6 +221,31 @@ public enum MacroAnalyzer {
             if lhs.severity != rhs.severity { return lhs.severity == .warning }
             return false
         }
+    }
+
+    /// Counts messages (a plain Return after typed text) sent less than `minimumGap` seconds after the
+    /// previous one. Only recorded delays and waits count; typing time is ignored, so this errs
+    /// towards not warning.
+    static func closeMessageCount(_ actions: [MacroAction], minimumGap: Double) -> Int {
+        guard minimumGap > 0 else { return 0 }
+        var elapsed = 0.0
+        var lastSend: Double?
+        var typedSinceSend = false
+        var close = 0
+        for action in actions {
+            elapsed += max(0, action.delay)
+            if action.kind == .wait { elapsed += max(0, action.duration ?? 0) }
+            if action.kind == .text { typedSinceSend = true }
+            let isSend = action.kind == .key
+                && (action.keyCode == KeyCodes.returnKey || action.keyCode == KeyCodes.keypadEnter)
+                && (action.modifiers ?? []).isEmpty
+            if isSend && typedSinceSend {
+                if let previous = lastSend, elapsed - previous < minimumGap { close += 1 }
+                lastSend = elapsed
+                typedSinceSend = false
+            }
+        }
+        return close
     }
 
     /// Heuristic: one long word with at least three of: lowercase, uppercase, digits, symbols.

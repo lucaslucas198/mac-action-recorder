@@ -24,6 +24,8 @@ public struct PlaybackConfig: Equatable {
     public var requiredAppName: String?
     /// Replay only these action indices (a "selected section").
     public var range: Range<Int>?
+    /// The first this-many actions of the played section run in the first repetition only.
+    public var prefixCount: Int = 0
 
     public init() {}
 }

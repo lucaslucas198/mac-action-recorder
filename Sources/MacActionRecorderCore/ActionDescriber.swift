@@ -3,6 +3,20 @@ import Foundation
 /// Human-readable one-line descriptions for the action list.
 public enum ActionDescriber {
     public static func describe(_ action: MacroAction) -> String {
+        let text = describeWithoutModifiers(action)
+        // Mouse actions can carry held modifier keys, e.g. a Shift-click or a ⌘-click.
+        switch action.kind {
+        case .click, .mouseDown, .mouseUp, .drag, .scroll:
+            if let modifiers = action.modifiers, !modifiers.isEmpty {
+                return "\(modifiers.symbols) " + text
+            }
+        default:
+            break
+        }
+        return text
+    }
+
+    private static func describeWithoutModifiers(_ action: MacroAction) -> String {
         switch action.kind {
         case .move:
             return "Move mouse to \(point(action))"

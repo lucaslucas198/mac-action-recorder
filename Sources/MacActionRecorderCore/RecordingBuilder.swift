@@ -14,6 +14,9 @@ public struct RecordingOptions: Codable, Equatable {
     public var minEventInterval = 0.03
     /// Minimum pointer travel between stored mouse-move samples, in points.
     public var minMoveDistance = 3.0
+    /// Use the time stamp macOS puts on each input event instead of the moment this app got to
+    /// look at it. The event time is not affected by this app being busy, so gaps are more exact.
+    public var preciseTiming = true
 
     public init() {}
 
@@ -26,6 +29,7 @@ public struct RecordingOptions: Codable, Equatable {
         recordText = c.value(.recordText, recordText)
         minEventInterval = c.value(.minEventInterval, minEventInterval)
         minMoveDistance = c.value(.minMoveDistance, minMoveDistance)
+        preciseTiming = c.value(.preciseTiming, preciseTiming)
     }
 }
 
@@ -47,12 +51,16 @@ public struct RawEvent: Equatable {
     public var x: Double
     public var y: Double
     public var kind: RawEventKind
+    /// Modifier keys held while a mouse or scroll event happened (Shift-click, ⌘-click, ...).
+    /// Key events carry their own modifiers inside `kind`.
+    public var modifiers: KeyModifiers
 
-    public init(time: Double, x: Double = 0, y: Double = 0, kind: RawEventKind) {
+    public init(time: Double, x: Double = 0, y: Double = 0, kind: RawEventKind, modifiers: KeyModifiers = []) {
         self.time = time
         self.x = x
         self.y = y
         self.kind = kind
+        self.modifiers = modifiers
     }
 }
 
@@ -135,7 +143,11 @@ public enum RecordingBuilder {
             case .mouseDrag(let button):
                 guard options.includeMouseMove,
                       throttle.shouldAccept(time: event.time, x: event.x, y: event.y) else { break }
-                assembler.append(round2(.drag(x: event.x, y: event.y, button: button)), start: event.time, end: event.time)
+                assembler.append(
+                    round2(.drag(x: event.x, y: event.y, button: button), modifiers: event.modifiers),
+                    start: event.time,
+                    end: event.time
+                )
 
             case .mouseDown(let button, let downCount):
                 if index + 1 < events.count,
@@ -154,7 +166,7 @@ public enum RecordingBuilder {
                         assembler.extendLast(to: up.time)
                     } else {
                         assembler.append(
-                            round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3))),
+                            round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers),
                             start: event.time,
                             end: up.time
                         )
@@ -164,7 +176,7 @@ public enum RecordingBuilder {
                     index += 1 // the matching mouse-up has been consumed
                 } else {
                     assembler.append(
-                        round2(.mouseDown(x: event.x, y: event.y, button: button)),
+                        round2(.mouseDown(x: event.x, y: event.y, button: button), modifiers: event.modifiers),
                         start: event.time,
                         end: event.time
                     )
@@ -177,7 +189,7 @@ public enum RecordingBuilder {
                 if let position = openButtons.firstIndex(of: button) {
                     openButtons.remove(at: position)
                     assembler.append(
-                        round2(.mouseUp(x: event.x, y: event.y, button: button)),
+                        round2(.mouseUp(x: event.x, y: event.y, button: button), modifiers: event.modifiers),
                         start: event.time,
                         end: event.time
                     )
@@ -195,7 +207,7 @@ public enum RecordingBuilder {
                     assembler.extendLast(to: event.time)
                 } else {
                     assembler.append(
-                        round2(.scroll(dx: dx, dy: dy, x: event.x, y: event.y)),
+                        round2(.scroll(dx: dx, dy: dy, x: event.x, y: event.y), modifiers: event.modifiers),
                         start: event.time,
                         end: event.time
                     )
@@ -258,10 +270,11 @@ public enum RecordingBuilder {
         return (value * 100).rounded() / 100
     }
 
-    private static func round2(_ action: MacroAction) -> MacroAction {
+    private static func round2(_ action: MacroAction, modifiers: KeyModifiers = []) -> MacroAction {
         var result = action
         if let x = result.x { result.x = roundPosition(x) }
         if let y = result.y { result.y = roundPosition(y) }
+        if !modifiers.isEmpty { result.modifiers = modifiers }
         return result
     }
 

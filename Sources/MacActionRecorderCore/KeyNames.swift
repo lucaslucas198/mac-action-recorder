@@ -64,6 +64,12 @@ public struct HotKey: Codable, Equatable {
         modifiers: [.control, .option, .command]
     )
 
+    /// ⌃⌥⌘P: pauses and resumes playback.
+    public static let defaultPause = HotKey(
+        keyCode: 35,
+        modifiers: [.control, .option, .command]
+    )
+
     public func matches(keyCode: Int, modifiers: KeyModifiers) -> Bool {
         return self.keyCode == keyCode && self.modifiers == modifiers
     }

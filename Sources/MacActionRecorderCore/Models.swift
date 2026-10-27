@@ -197,6 +197,37 @@ public struct TargetApp: Codable, Equatable, Hashable {
     }
 }
 
+/// The position and size of a window in global screen coordinates (points, origin top-left of the
+/// main display, the same space as the click coordinates).
+public struct WindowFrame: Codable, Equatable, Hashable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    /// True when the point is inside the frame, widened by `margin` points on every side.
+    public func contains(x px: Double, y py: Double, margin: Double = 0) -> Bool {
+        return px >= x - margin && px <= x + width + margin
+            && py >= y - margin && py <= y + height + margin
+    }
+
+    /// True when both width and height differ by no more than `tolerance` points.
+    public func hasSameSize(as other: WindowFrame, tolerance: Double = 2) -> Bool {
+        return abs(width - other.width) <= tolerance && abs(height - other.height) <= tolerance
+    }
+
+    public var isUsable: Bool {
+        return x.isFinite && y.isFinite && width.isFinite && height.isFinite && width > 0 && height > 0
+    }
+}
+
 /// Playback settings stored with a recording so they travel with the file.
 public struct PlaybackDefaults: Codable, Equatable {
     public var speed: Double
@@ -222,6 +253,11 @@ public struct Recording: Codable, Identifiable, Equatable {
     public var recordedScreen: ScreenSize?
     public var playbackDefaults: PlaybackDefaults?
     public var notes: String?
+    /// Where the target app's front window was when recording started. When playback finds the
+    /// window somewhere else, clicks that were inside it are shifted by the same amount.
+    public var targetWindow: WindowFrame?
+    /// A channel or person to open (with the Quick Switcher) before the macro starts.
+    public var startChannel: String?
     public var actions: [MacroAction]
 
     public init(
@@ -234,6 +270,8 @@ public struct Recording: Codable, Identifiable, Equatable {
         recordedScreen: ScreenSize? = nil,
         playbackDefaults: PlaybackDefaults? = nil,
         notes: String? = nil,
+        targetWindow: WindowFrame? = nil,
+        startChannel: String? = nil,
         actions: [MacroAction] = []
     ) {
         self.formatVersion = formatVersion
@@ -245,6 +283,8 @@ public struct Recording: Codable, Identifiable, Equatable {
         self.recordedScreen = recordedScreen
         self.playbackDefaults = playbackDefaults
         self.notes = notes
+        self.targetWindow = targetWindow
+        self.startChannel = startChannel
         self.actions = actions
     }
 
