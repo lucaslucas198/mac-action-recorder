@@ -305,7 +305,7 @@ final class SetupManager: ObservableObject {
                 self.begin(.permissions)
                 self.background({ InstallDoctor.repairPermissionsIfNeeded() }) { [weak self] repaired in
                     guard let self = self else { return }
-                    self.finish(.permissions, note: repaired ? "Old entries removed" : "Nothing to clear")
+                    self.finish(.permissions, note: repaired ? "Done" : "Nothing to clear")
                     self.results = SetupManager.describe(ejected: ejected, moved: moved, repaired: repaired)
                     self.complete()
                 }
@@ -420,7 +420,7 @@ final class SetupManager: ObservableObject {
             lines.append("Moved \(moved.count) other cop\(moved.count == 1 ? "y" : "ies") of the app to the Trash (from \(names)).")
         }
         if repaired {
-            lines.append("Cleared old permission entries: switch Input Monitoring and Accessibility on again for this copy.")
+            lines.append("Removed any old permission entries for this app, so the switches in System Settings now apply to this copy. Switch Input Monitoring and Accessibility on below.")
         }
         return lines
     }
