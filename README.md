@@ -6,7 +6,7 @@
 
 A small native macOS app that records your mouse and keyboard, then plays the recording back at a speed you choose. It is built for repetitive Discord desktop tasks (open a channel, click the message box, type a message, press Return, repeat), but it works with any app.
 
-> **Status: early version.** GitHub Actions compiles it, runs the unit tests, and builds the disk image on every push (see [Verification status](#verification-status)). Recording and playback in real apps, including Discord, the Welcome screen, and updating from one release to the next have **not been tested on a real Mac yet**.
+> **Status: early version.** On every push GitHub Actions compiles it, runs the unit tests, builds the disk image, runs the install machinery for real on a macOS runner, and draws every main screen to images (see [Verification status](#verification-status)). Recording and playback in real apps, including Discord, the setup screen end to end, and updating from one release to the next have **not been tested on a real Mac by me**.
 
 ## What it does
 
