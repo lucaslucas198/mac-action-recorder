@@ -52,7 +52,7 @@ Every action has:
 | `kind` | string | One of the kinds below. |
 | `delay` | number (seconds) | Time to wait **before** this action, measured from the end of the previous action, at 1× speed. |
 
-Using a relative delay means that deleting, duplicating or reordering actions never leaves stale absolute timestamps. The total length of a macro at 1× is the sum of all `delay` values plus all `wait` durations (typing time is not included).
+Using a relative delay means that deleting, duplicating or reordering actions never leaves stale absolute timestamps. The total length of a macro at 1× is the sum of all `delay` values plus every `duration` (waits, and the recorded time of clicks and text).
 
 | `kind` | Extra fields | Meaning |
 | --- | --- | --- |
@@ -60,10 +60,10 @@ Using a relative delay means that deleting, duplicating or reordering actions ne
 | `drag` | `x`, `y`, `button` | Move the pointer with a button held. |
 | `mouseDown` | `x`, `y`, `button` | Press and hold a button. |
 | `mouseUp` | `x`, `y`, `button` | Release a button. |
-| `click` | `x`, `y`, `button`, `clickCount` | Press and release. `clickCount` 2 is a double-click, 3 a triple-click. |
+| `click` | `x`, `y`, `button`, `clickCount`, optional `duration` | Press and release. `clickCount` 2 is a double-click, 3 a triple-click. `duration` (app 0.6.0 and later) is how long the button was held when recorded, from the first press to the last release. |
 | `scroll` | `scrollX` and/or `scrollY`, optional `x`, `y` | Scroll by pixels. |
 | `key` | `keyCode`, `modifiers` | Press and release one key. Shortcuts, Return, arrows, and so on. |
-| `text` | `text` | Type text, independent of the keyboard layout. A line break is typed as Shift+Return. |
+| `text` | `text`, optional `duration` | Type text, independent of the keyboard layout. A line break is typed as Shift+Return. `duration` (app 0.6.0 and later) is the time from the first to the last character when recorded. |
 | `wait` | `duration` | Pause for `duration` seconds (in addition to `delay`). |
 
 Field notes:
@@ -99,6 +99,7 @@ A complete, personal-data-free sample is in [`Samples/discord-send-message.macro
 
 - Each action's `delay` (and a `wait`'s `duration`) is divided by the playback speed.
 - At speeds above 1×, clicks, key presses and typing are not scheduled faster than the *Minimum action delay* setting, and typing speed is limited by the *Delay per typed character* setting, so fast playback stays reliable. Mouse movement scales fully.
-- Pointer movement samples are scheduled against the ideal timeline so that timer overshoot does not accumulate.
+- A click with a `duration` is held that long (divided by the speed); a text action with a `duration` is typed at that pace, spread evenly over its characters (both can be switched off in Settings > Playback > Match the recording). Without `duration`, the click and typing settings are used. Older app versions and the Windows app ignore `duration` on clicks and text.
+- Every action is scheduled against the recorded timeline (since 0.6.0; before, only pointer movement was), so a late wake-up or a slow action is made up in the next gap instead of accumulating. If playback falls more than 0.15 s behind, the timeline restarts from that moment instead of rushing.
 - Pausing freezes the timeline; resuming continues from where it stopped.
 - Stopping cancels immediately; no queued action is performed afterwards, and any mouse button still held is released.

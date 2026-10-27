@@ -246,7 +246,7 @@ public enum SetupStep: Int, CaseIterable, Equatable, Identifiable {
         case .installing: return "Replacing the app in Applications with the prepared copy."
         case .reopening: return "The app closes and opens again from Applications. This takes a few seconds."
         case .ejecting: return "Old Mac Action Recorder disk images are still open. They are ejected so macOS cannot open an old copy by mistake."
-        case .removingCopies: return "Other copies of the app are moved to the Trash (you can put them back from there)."
+        case .removingCopies: return "Other copies of the app (in Applications, Downloads, on the Desktop, or anywhere Spotlight finds one) are moved to the Trash, where you can put them back. macOS may ask once whether the app may look in Downloads or Desktop: click Allow."
         case .permissions: return "Entries from older versions are removed so the switches in System Settings work for this copy."
         }
     }
@@ -260,6 +260,8 @@ public enum SetupStep: Int, CaseIterable, Equatable, Identifiable {
             return "If the app does not reopen by itself, open it from your Applications folder."
         case .copying, .installing:
             return "Still copying. This can take a little longer on a busy Mac."
+        case .removingCopies:
+            return "If macOS asks whether Mac Action Recorder may access files in Downloads or on the Desktop, click Allow (Don't Allow skips those folders)."
         default:
             return nil
         }

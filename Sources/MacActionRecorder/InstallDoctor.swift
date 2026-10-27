@@ -164,19 +164,32 @@ enum InstallDoctor {
         return false
     }
 
-    /// Moves every other copy of the app that Spotlight knows about to the Trash. Copies inside
-    /// a source checkout's build folder are left alone. Returns the paths that were moved.
-    static func trashOtherCopies() -> [String] {
+    /// Moves every other copy of the app to the Trash: the ones Spotlight knows about, plus any in
+    /// the Applications folders (and, with `lookInUserFolders`, in Downloads and on the Desktop,
+    /// which finds fresh downloads Spotlight has not indexed yet, or all of them when Spotlight is
+    /// off). Copies inside a source checkout's build folder are left alone. Returns the paths that
+    /// were moved.
+    ///
+    /// Looking in Downloads or Desktop can make macOS ask once whether the app may do so; it is
+    /// only done during the visible setup, never in the background.
+    static func trashOtherCopies(lookInUserFolders: Bool = false) -> [String] {
         guard isAppBundle, location.isInstalled else { return [] }
-        return trashCopies(keeping: selfPath)
+        var folders: [String] = []
+        if lookInUserFolders {
+            folders = ["Downloads", "Desktop"].map { (home as NSString).appendingPathComponent($0) }
+        }
+        return trashCopies(keeping: selfPath, alsoLookIn: folders)
     }
 
     /// The work of `trashOtherCopies`, keeping `keep`. The running copy is always kept as well.
-    static func trashCopies(keeping keep: String) -> [String] {
+    static func trashCopies(keeping keep: String, alsoLookIn folders: [String] = []) -> [String] {
+        var found: [String] = []
         let query = "kMDItemCFBundleIdentifier == '\(Installation.bundleID)'"
-        guard let data = run("/usr/bin/mdfind", [query]).output,
-              let text = String(data: data, encoding: .utf8) else { return [] }
-        let found = text.split(separator: "\n").map { String($0) }
+        if let data = run("/usr/bin/mdfind", [query]).output, let text = String(data: data, encoding: .utf8) {
+            found = text.split(separator: "\n").map { String($0) }
+        }
+        let applicationFolders = ["/Applications", (home as NSString).appendingPathComponent("Applications")]
+        found += appBundles(in: applicationFolders + folders)
         let candidates = Installation.copiesToRemove(
             found: found,
             keeping: keep,
@@ -200,6 +213,30 @@ enum InstallDoctor {
             registerWithLaunchServices()
         }
         return moved
+    }
+
+    /// App bundles directly in each folder or one folder deeper (for example an unzipped
+    /// download folder). Only names are listed; it stops after a few thousand entries per folder.
+    static func appBundles(in folders: [String]) -> [String] {
+        let fm = FileManager.default
+        var result: [String] = []
+        for folder in folders {
+            guard let items = try? fm.contentsOfDirectory(atPath: folder) else { continue }
+            for item in items.prefix(3000) where !item.hasPrefix(".") {
+                let path = (folder as NSString).appendingPathComponent(item)
+                if item.hasSuffix(".app") {
+                    result.append(path)
+                    continue
+                }
+                var isFolder: ObjCBool = false
+                guard fm.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue,
+                      let inner = try? fm.contentsOfDirectory(atPath: path) else { continue }
+                for name in inner.prefix(500) where name.hasSuffix(".app") {
+                    result.append((path as NSString).appendingPathComponent(name))
+                }
+            }
+        }
+        return result
     }
 
     /// True when both paths lead to the same file on disk (same volume and file number).

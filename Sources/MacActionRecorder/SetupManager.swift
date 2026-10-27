@@ -299,7 +299,8 @@ final class SetupManager: ObservableObject {
             guard let self = self else { return }
             self.finish(.ejecting, note: ejected.isEmpty ? "None were open" : "Ejected " + ejected.joined(separator: ", "))
             self.begin(.removingCopies)
-            self.background({ InstallDoctor.trashOtherCopies() }) { [weak self] moved in
+            self.liveLine = "Looking in Applications, Downloads and Desktop, and asking Spotlight"
+            self.background({ InstallDoctor.trashOtherCopies(lookInUserFolders: true) }) { [weak self] moved in
                 guard let self = self else { return }
                 self.finish(.removingCopies, note: moved.isEmpty ? "No other copies found" : "Moved \(moved.count) to the Trash")
                 self.begin(.permissions)
