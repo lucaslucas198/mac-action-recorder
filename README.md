@@ -189,12 +189,34 @@ Coordinate-based playback **can fail** whenever the interface or screen layout c
 
 This app does not and cannot promise perfect replay.
 
+## Accuracy, safety stop and Discord (0.5.0)
+
+**Can it be 100% accurate? No.** Playback repeats clicks at recorded screen positions and does not look at the screen. It cannot know whether a button is still there. What this version does is remove the causes it can measure and stop when something is certainly wrong:
+
+| Cause | What the app does |
+| --- | --- |
+| Slow or jittery recording | Uses the exact time macOS stamps on each event (Settings > Recording > Accuracy). |
+| Shift-click, Command-click | Records and replays the held modifier keys. |
+| Window moved | If the window has the same size, every click is shifted by the same amount. |
+| Window resized, app quit, display changed | The run stops with a message (Settings > Safety). It never guesses. |
+| Another app took focus | Stops (on by default: *Only play while the recorded app is in front*). |
+| App not in front or closed at the start | Brings it to the front, and opens it if closed (Settings > Playback). |
+| Clicks too fast for an app | Adjustable pause before a click, button hold time, double-click gap and key hold time. |
+
+What it **cannot** detect: a button that moved inside the window, a message that failed to send, a pop-up. The AI cannot see your screen either, so it is **not** used to decide whether to stop. It is used only to explain a stop in plain words (Check > Why the last run was stopped) and to personalize suggestions. Test every macro slowly first.
+
+**Adding actions by hand.** Click **Add** above the action list and choose click, double-click, right-click, move, scroll, key press, type text, wait or a Discord preset. For mouse actions, **Pick on screen** lets you click the spot instead of typing coordinates. The new action goes after the selected one, or at the end.
+
+**Choosing Discord and its channel.** Open **App and Discord** under the macro name, pick Discord as the app, and type a channel (or choose a favorite from Settings > Discord). On Play the app brings Discord to the front and opens that channel with Discord's Quick Switcher (`⌘K`) before the first repetition. This relies on Discord keeping that shortcut and on the Quick Switcher choosing the first match for the name you typed, so test it. Discord's bundle identifier `com.hnc.Discord` comes from a third-party source, not from Discord; the app also finds Discord by name when it is running.
+
+**Personalized Discord help.** Settings > Discord holds your favorite channels, messages you send often, your minimum gap between messages, a note about how you use Discord, and your own rules. Check > Discord coach turns them into one-click steps. If you switch on *Use my Discord profile in AI suggestions* (Settings > AI), the on-device AI is also told these notes; the same page shows exactly what it is told. Nothing leaves your Mac. This app does not try to get around Discord's rate limits; the gap setting only warns you.
+
 ## Known limitations
 
 These are design limits, not bugs. Items marked **untested** have not been observed on a real Mac yet.
 
 - **Recording and playback have not been tried on a real Mac yet.** Only the build and the core-logic unit tests have been run.
-- Recording fidelity is below playback fidelity. Events are timestamped when the app receives them on the main thread, so timing can be off by a few milliseconds, more if the Mac is busy.
+- Recording fidelity is below playback fidelity. With *Use the exact time macOS stamps on each event* on (the default since 0.5.0) gaps follow the system's event times, which is more exact than before but was **not measured** on a real Mac. With it off, events are timestamped when the app receives them, which can be off by a few milliseconds, more if the Mac is busy.
 - Mouse movement is sampled (default: at most every 30 ms and 3 points apart). Playback reproduces the path approximately, not pixel for pixel.
 - Scroll events within 80 ms of each other are combined into one action.
 - Typed text is replayed as characters, independent of keyboard layout. Dead-key sequences and input methods (Chinese/Japanese/Korean IMEs, emoji picker) may not record as intended. Shortcuts are replayed by key code.
@@ -313,6 +335,7 @@ They do **not** cover the macOS-specific parts (event taps, posting events, perm
 | Recording / playback on a real Mac | **Not verified.** Event capture, posting events, permissions and the SwiftUI interface have no automated tests. |
 | Welcome screen, Set Up This Mac, release-based update, local re-signing | **Compiles. Not run.** Whether permissions survive an update after local re-signing is the design intent, not an observed result. |
 | Check macro, Improve, Draft with AI, AI review, Show Clicks, Play Macro menu, permission rescue buttons | **Compiles.** Core rules have unit tests. The interface and the AI calls (Apple's Foundation Models) have not been exercised in the running app by me. |
+| Window follow, safety stop, bring-to-front, open-channel-first, Add and Pick on screen, new Settings tabs, Discord coach (0.5.0) | **Compiles, and the core rules have unit tests** (window shift and resize rules, every stop rule, prefix steps, settings, profile, new checks). **None of it has been run on a real Mac.** In particular untested: reading window positions, launching Discord, the Quick Switcher step, the screen picker overlay on multiple displays, and the layout at different window sizes. |
 | Universal (arm64 + x86_64) build | The build script produced a universal build, but the Intel half was not run. Xcode warns that x86_64 is deprecated for macOS 27. |
 
 Manual checklist (not done yet):

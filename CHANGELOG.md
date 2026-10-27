@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+## 0.5.0
+
+Mac app (the Windows app is unchanged in this version). CI compiles the app and runs the core unit tests; none of the new behavior has been run on a real Mac yet, see README > Verification status.
+
+**More accurate playback (it cannot be 100%, see README > Accuracy)**
+
+- Clicks, drags and scrolls now remember the Shift, Option, Control and Command keys held during them (for example Shift-click) and replay them.
+- Recording uses the time macOS stamps on each input event, so gaps do not depend on how busy the app was. Switch it off in Settings > Recording > Accuracy.
+- Clicks and key presses use configurable timing (pause before a click, button held down, double-click gap, key held down) in Settings > Playback.
+- New recordings save the target app's window position. If the window has only moved since, every click is shifted by the same amount ("follow the window"). If its size changed, nothing is guessed and the run stops.
+- Playback brings the macro's app to the front first, and opens it if it is closed.
+- Optionally puts the mouse pointer back where it was after a run.
+- New pause/resume shortcut (default `⌃⌥⌘P`) next to the emergency stop.
+
+**Automatic stop (Settings > Safety)**
+
+- Before each click or key press, playback checks facts macOS can report: the app is still running, its window is still the recorded size, the display size is unchanged, and (optional) nobody else moved the mouse. It stops only when one of these is certain and says why. Values it cannot read never cause a stop.
+- The AI is not used to decide. It cannot see the screen. In Check, it can explain a stop in plain words.
+- "Only play while the recorded app is in front" is now on by default for new settings. Existing settings files keep their saved value.
+
+**Add actions by hand**
+
+- New **Add** menu: click, double-click, right-click, move, scroll, key press, type text, wait, Discord preset. Mouse actions have **Pick on screen**: click anywhere to fill in the position. Clicks can include held modifier keys.
+
+**Discord**
+
+- Each macro can name a Discord channel to open first (Quick Switcher, `⌘K`) and the app brings Discord to the front before it starts. The steps run in the first repetition only.
+- Settings > Discord: favorite channels, messages you send often, shortest gap between messages, notes about how you use Discord, your own rules.
+- Check > Discord coach: one-click "open this channel first" and "type and send this message", plus optional personal tips from the on-device AI. Settings > AI shows exactly what the AI is told about you and lets you switch it off.
+- New checks: messages closer together than your gap, `@everyone` / `@here`, and a Discord macro that sends text with no channel chosen.
+
+**Cleaner layout**
+
+- Check, Show Clicks and Add have text labels and sit in their own row. The edit tools are on a second row and fall back to icons when narrow, so nothing is clipped or overlaps.
+- Compact info and playback card; target app, channel and window reference are in a collapsible section; the control bar drops hints before it would overlap. Larger default and minimum window size.
+- Settings has General, Recording, Playback, Safety, Discord, AI, Storage, Privacy and Updates tabs, with many more options (appearance, row density, new-macro name, confirm before delete, sounds, mouse-path presets, timing sliders).
+
+**File format**
+
+- Recordings may now contain `targetWindow`, `startChannel`, and `modifiers` on mouse actions. All are optional; older files open unchanged and `formatVersion` stays 1. Older app versions ignore the new fields.
+
 ## 0.4.0
 
 - **Windows version** (new, in `windows/`): a native WPF app for Windows 10 1809+ and Windows 11 (64-bit) with the same features as the Mac app: recording, playback and speed/repeat/loop/countdown, pause/resume/restart/emergency stop, the action editor with undo and redo, the Check panel, the optional local AI helper (Ollama on this PC only), Show Clicks, Discord keyboard presets, settings, import/export and backups, and update checks against GitHub Releases (checksum verified before the installer runs).

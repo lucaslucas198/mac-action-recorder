@@ -440,4 +440,33 @@ final class AccuracyAndSafetyTests: XCTestCase {
         let recording = Recording(name: "c", targetApp: discord, actions: Presets.actions(for: "open-and-send", input: "general", secondInput: "hi"))
         XCTAssertNil(findings(recording).first { $0.id == "no-channel" })
     }
+
+    // MARK: Discord detection and start channel
+
+    func testDiscordDetectionCoversReleaseChannelsAndRenamedCopies() {
+        XCTAssertTrue(DiscordProfile.isDiscord(bundleID: "com.hnc.Discord", name: "Discord"))
+        XCTAssertTrue(DiscordProfile.isDiscord(bundleID: "com.hnc.DiscordPTB", name: "Discord PTB"))
+        XCTAssertTrue(DiscordProfile.isDiscord(bundleID: "com.hnc.DiscordCanary", name: "Discord Canary"))
+        XCTAssertTrue(DiscordProfile.isDiscord(bundleID: "com.example.copy", name: "My Discord"))
+        XCTAssertFalse(DiscordProfile.isDiscord(bundleID: "com.apple.finder", name: "Finder"))
+    }
+
+    func testStartChannelSurvivesTheCodec() throws {
+        var recording = Recording(name: "c", actions: [.key(KeyCodes.returnKey)])
+        recording.startChannel = "general"
+        recording.targetWindow = WindowFrame(x: 10, y: 20, width: 800, height: 600)
+        let data = try RecordingCodec.encode(recording)
+        let back = try RecordingCodec.decode(data)
+        XCTAssertEqual(back.startChannel, "general")
+        XCTAssertEqual(back.targetWindow, WindowFrame(x: 10, y: 20, width: 800, height: 600))
+    }
+
+    func testPrefixStepsOpenTheChannelWithTheQuickSwitcher() {
+        let steps = Presets.openChannel("general")
+        XCTAssertEqual(steps.first?.kind, .key)
+        XCTAssertEqual(steps.first?.keyCode, KeyCodes.ansiK)
+        XCTAssertEqual(steps.first?.modifiers, [.command])
+        XCTAssertTrue(steps.contains { $0.kind == .text && $0.text == "general" })
+        XCTAssertEqual(steps.last?.keyCode, KeyCodes.returnKey)
+    }
 }

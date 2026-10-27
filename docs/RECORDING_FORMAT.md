@@ -37,6 +37,8 @@ Recordings contain **data only**. There is no field that can run a command or sc
 | `targetApp` | object, optional | `{ "bundleID": "com.example.App", "name": "Example App" }`. App that was in front when recording started. Used by the optional foreground check. |
 | `recordedScreen` | object, optional | `{ "width": 1512, "height": 982 }`. Main display size when recorded; used to warn if it differs. |
 | `playbackDefaults` | object, optional | `{ "speed": 1, "repeatCount": 1, "loopDelay": 0 }`. `repeatCount` 0 means loop until stopped. |
+| `targetWindow` | object, optional | `{ "x": 100, "y": 80, "width": 1200, "height": 800 }`. Position and size of the target app's front window when recording started, in the same global top-left coordinates as the actions. Playback uses it to follow a moved window and to detect a resized one. Added in app version 0.5.0. |
+| `startChannel` | string, optional | A Discord channel or person to open with the Quick Switcher (`⌘K`) before the first repetition. Added in app version 0.5.0. |
 | `notes` | string, optional | Free text. |
 | `actions` | array | Ordered list of actions. |
 
@@ -70,6 +72,7 @@ Field notes:
 - `button`: `"left"`, `"right"` or `"other"` (middle).
 - `keyCode`: a macOS virtual key code (for example 36 = Return, 49 = Space, 40 = K).
 - `modifiers`: array of any of `"control"`, `"option"`, `"shift"`, `"command"`.
+  On `click`, `mouseDown`, `mouseUp`, `drag` and `scroll` actions it lists the keys held during the action (for example Shift-click). It is omitted when no key was held. Added in app version 0.5.0.
 
 ## Example
 
