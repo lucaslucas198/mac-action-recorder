@@ -59,6 +59,12 @@ public struct DiscordProfile: Codable, Equatable {
         rules = c.value(.rules, rules)
     }
 
+    /// True for the Discord desktop app (stable, PTB or Canary). It looks at the bundle ID prefix
+    /// Discord's own releases use and at the app name, so a renamed copy is still found by name.
+    public static func isDiscord(bundleID: String, name: String) -> Bool {
+        return bundleID.lowercased().hasPrefix("com.hnc.discord") || name.lowercased().contains("discord")
+    }
+
     func sanitized() -> DiscordProfile {
         var p = self
         p.minSecondsBetweenMessages = Num.clamp(p.minSecondsBetweenMessages, 0...3600)

@@ -33,6 +33,8 @@ final class EventRecorder {
         var targetApp: TargetApp?
         var secureInputSeen: Bool
         var truncated: Bool
+        /// The target app's front window when recording started (see `WindowRelocation`).
+        var targetWindow: WindowFrame?
     }
 
     private(set) var isRecording = false
@@ -42,6 +44,9 @@ final class EventRecorder {
     private var events: [RawEvent] = []
     private var options = RecordingOptions()
     private var ignoredHotKey = HotKey.defaultEmergencyStop
+    private var otherIgnoredHotKey: HotKey?
+    private var targetWindow: WindowFrame?
+    private var lastEventTime = 0.0
     private var throttle = MoveThrottle(minInterval: 0.03, minDistance: 3)
     private var targetApp: TargetApp?
     private var secureInputSeen = false
@@ -56,10 +61,13 @@ final class EventRecorder {
         return events.count
     }
 
-    func start(options: RecordingOptions, ignoredHotKey: HotKey) throws {
+    func start(options: RecordingOptions, ignoredHotKey: HotKey, otherIgnoredHotKey: HotKey? = nil) throws {
         guard !isRecording else { return }
         self.options = options
         self.ignoredHotKey = ignoredHotKey
+        self.otherIgnoredHotKey = otherIgnoredHotKey
+        targetWindow = nil
+        lastEventTime = 0
         throttle = MoveThrottle(minInterval: options.minEventInterval, minDistance: options.minMoveDistance)
         events.removeAll(keepingCapacity: true)
         targetApp = nil
@@ -110,7 +118,8 @@ final class EventRecorder {
             events: events,
             targetApp: targetApp,
             secureInputSeen: secureInputSeen,
-            truncated: truncated
+            truncated: truncated,
+            targetWindow: targetWindow
         )
     }
 
@@ -130,8 +139,9 @@ final class EventRecorder {
             return
         }
 
-        let time = ProcessInfo.processInfo.systemUptime
+        let time = eventTime(for: event)
         let location = event.location
+        let held = EventTapSupport.modifiers(from: event.flags)
 
         switch type {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
@@ -145,18 +155,18 @@ final class EventRecorder {
             case .otherMouseDragged: kind = .mouseDrag(.other)
             default: kind = .mouseMove
             }
-            append(time, location, kind)
+            append(time, location, kind, modifiers: held)
 
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             if isInsideOwnWindow(location) { return }
             noteTargetApp()
             let count = max(1, Int(event.getIntegerValueField(.mouseEventClickState)))
-            append(time, location, .mouseDown(button(for: type), clickCount: count))
+            append(time, location, .mouseDown(button(for: type), clickCount: count), modifiers: held)
 
         case .leftMouseUp, .rightMouseUp, .otherMouseUp:
             if isInsideOwnWindow(location) { return }
             let count = max(1, Int(event.getIntegerValueField(.mouseEventClickState)))
-            append(time, location, .mouseUp(button(for: type), clickCount: count))
+            append(time, location, .mouseUp(button(for: type), clickCount: count), modifiers: held)
 
         case .scrollWheel:
             guard options.recordScroll else { return }
@@ -164,7 +174,7 @@ final class EventRecorder {
             let dy = Int(event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1))
             let dx = Int(event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2))
             if dx == 0 && dy == 0 { return }
-            append(time, location, .scroll(dx: dx, dy: dy))
+            append(time, location, .scroll(dx: dx, dy: dy), modifiers: held)
 
         case .keyDown:
             // Typing into this app's own windows (renaming a macro, settings) is not part of the macro.
@@ -177,6 +187,7 @@ final class EventRecorder {
             let code = Int(event.getIntegerValueField(.keyboardEventKeycode))
             let modifiers = EventTapSupport.modifiers(from: event.flags)
             if ignoredHotKey.matches(keyCode: code, modifiers: modifiers) { return }
+            if let other = otherIgnoredHotKey, other.matches(keyCode: code, modifiers: modifiers) { return }
             noteTargetApp()
             let characters = NSEvent(cgEvent: event)?.characters ?? ""
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
@@ -187,8 +198,27 @@ final class EventRecorder {
         }
     }
 
-    private func append(_ time: Double, _ location: CGPoint, _ kind: RawEventKind) {
-        events.append(RawEvent(time: time, x: Double(location.x), y: Double(location.y), kind: kind))
+    private func append(_ time: Double, _ location: CGPoint, _ kind: RawEventKind, modifiers: KeyModifiers = []) {
+        events.append(RawEvent(time: time, x: Double(location.x), y: Double(location.y), kind: kind, modifiers: modifiers))
+    }
+
+    /// The time of an event in seconds on the same clock as `systemUptime`.
+    ///
+    /// The time macOS stamps on an event is when it happened, not when this app got round to
+    /// reading it, so it is not affected by this app being busy for a few milliseconds. If the
+    /// stamp is missing, or does not match the system clock (which would mean it uses another
+    /// base), or goes backwards, the arrival time is used instead, so a bad stamp can never
+    /// corrupt a recording.
+    private func eventTime(for event: CGEvent) -> Double {
+        let arrival = ProcessInfo.processInfo.systemUptime
+        var time = arrival
+        if options.preciseTiming, let stamp = NSEvent(cgEvent: event)?.timestamp,
+           stamp > 0, abs(stamp - arrival) < 0.5 {
+            time = stamp
+        }
+        if time < lastEventTime { time = lastEventTime }
+        lastEventTime = time
+        return time
     }
 
     private func button(for type: CGEventType) -> MouseButton {
@@ -203,6 +233,10 @@ final class EventRecorder {
         guard targetApp == nil else { return }
         if let front = Platform.frontmost(), !Platform.isThisApp(front) {
             targetApp = front
+            // Remember where its window is, so playback can follow it if it moves.
+            if let app = Platform.runningApplication(bundleID: front.bundleID) {
+                targetWindow = Platform.frontWindow(pid: app.processIdentifier).frame
+            }
         }
     }
 

@@ -16,10 +16,10 @@ struct MainView: View {
                 LibraryView()
                     .frame(minWidth: 230, idealWidth: 260, maxWidth: 360)
                 DetailView()
-                    .frame(minWidth: 520)
+                    .frame(minWidth: 600)
             }
         }
-        .frame(minWidth: 880, minHeight: 620)
+        .frame(minWidth: 960, minHeight: 700)
         .sheet(isPresented: $model.showingWelcome) {
             WelcomeView()
                 .environmentObject(model)
@@ -184,18 +184,29 @@ struct ControlBar: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 10) {
+        // Falls back to shorter forms instead of letting anything overlap or clip.
+        ViewThatFits(in: .horizontal) {
+            bar(hints: true, shortLabels: false)
+            bar(hints: false, shortLabels: false)
+            bar(hints: false, shortLabels: true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func bar(hints: Bool, shortLabels: Bool) -> some View {
+        HStack(spacing: 8) {
             Button {
                 model.startRecording()
             } label: {
-                Label("Start Recording", systemImage: "record.circle")
+                Label(shortLabels ? "Record" : "Start Recording", systemImage: "record.circle")
             }
             .disabled(model.status.isBusy)
 
             Button {
                 model.stopRecording()
             } label: {
-                Label("Stop Recording", systemImage: "stop.circle")
+                Label(shortLabels ? "Stop" : "Stop Recording", systemImage: "stop.circle")
             }
             .disabled(!model.status.isRecordingPhase)
 
@@ -218,6 +229,7 @@ struct ControlBar: View {
                 }
             }
             .disabled(!model.status.isPlaybackPhase)
+            .help("Pause or resume playback (\(model.settings.pauseHotKey.displayString))")
 
             Button {
                 model.restart()
@@ -226,24 +238,25 @@ struct ControlBar: View {
             }
             .disabled(model.current == nil || model.status.isRecordingPhase)
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            Text("Emergency stop: \(model.hotKeyText)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if hints {
+                Text("Stop \(model.hotKeyText)  ·  Pause \(model.settings.pauseHotKey.displayString)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
 
             Button {
                 model.emergencyStop()
             } label: {
-                Label("Emergency Stop", systemImage: "octagon.fill")
+                Label(shortLabels ? "Stop All" : "Emergency Stop", systemImage: "octagon.fill")
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
             .disabled(!model.status.isBusy)
-            .help("Stops recording or playback immediately")
+            .help("Stops recording or playback immediately (\(model.hotKeyText))")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 }
 
@@ -266,6 +279,8 @@ struct DetailView: View {
                 }
                 Divider()
                 EditorView()
+                    .frame(minHeight: 240)
+                    .layoutPriority(1)
             } else {
                 EmptyDetailView()
             }

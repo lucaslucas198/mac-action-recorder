@@ -1,34 +1,90 @@
 import MacActionRecorderCore
 import SwiftUI
 
+/// What the Add menu can create.
+enum AddKind: String, Identifiable, CaseIterable {
+    case click, doubleClick, rightClick, move, scroll, key, text, wait
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .click: return "Click"
+        case .doubleClick: return "Double-click"
+        case .rightClick: return "Right-click"
+        case .move: return "Move mouse"
+        case .scroll: return "Scroll"
+        case .key: return "Key press or shortcut"
+        case .text: return "Type text"
+        case .wait: return "Wait"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .click: return "cursorarrow.click"
+        case .doubleClick: return "cursorarrow.click.2"
+        case .rightClick: return "contextualmenu.and.cursorarrow"
+        case .move: return "cursorarrow.motionlines"
+        case .scroll: return "arrow.up.and.down"
+        case .key: return "command"
+        case .text: return "keyboard"
+        case .wait: return "timer"
+        }
+    }
+
+    /// A starting action for the Add sheet. Mouse actions start at the pointer's current position.
+    func makeAction() -> MacroAction {
+        let point = Platform.pointerLocation() ?? CGPoint(x: 200, y: 200)
+        let x = Double(point.x.rounded())
+        let y = Double(point.y.rounded())
+        switch self {
+        case .click: return .click(x: x, y: y)
+        case .doubleClick: return .click(x: x, y: y, count: 2)
+        case .rightClick: return .click(x: x, y: y, button: .right)
+        case .move: return .move(x: x, y: y)
+        case .scroll: return .scroll(dx: 0, dy: -120)
+        case .key: return .key(KeyCodes.returnKey)
+        case .text: return .text("")
+        case .wait: return .wait(1)
+        }
+    }
+}
+
 /// Ordered list of the selected macro's actions with editing tools.
 struct EditorView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection = Set<UUID>()
     @State private var editing: MacroAction?
-    @State private var showWaitSheet = false
+    @State private var adding: AddKind?
     @State private var showPresetSheet = false
     @State private var showCheckSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            header
+            Divider()
+            toolsRow
             Divider()
             if let recording = model.current {
                 if recording.actions.isEmpty {
-                    Text("This macro has no actions. Insert a delay or a preset, or record again.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: 6) {
+                        Text("This macro has no actions yet.")
+                            .font(.headline)
+                        Text("Record again, or use Add to build one by hand.")
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     actionList(recording)
                 }
             }
         }
         .sheet(item: $editing) { action in
-            ActionEditSheet(action: action)
+            ActionEditSheet(action: action, mode: .edit)
         }
-        .sheet(isPresented: $showWaitSheet) {
-            InsertWaitSheet(afterID: insertionPoint)
+        .sheet(item: $adding) { kind in
+            ActionEditSheet(action: kind.makeAction(), mode: .add(afterID: insertionPoint))
         }
         .sheet(isPresented: $showPresetSheet) {
             PresetSheet(afterID: insertionPoint)
@@ -43,16 +99,49 @@ struct EditorView: View {
 
     // MARK: Toolbar
 
-    private var toolbar: some View {
-        HStack(spacing: 6) {
+    /// Title and the main tools. Every button has a text label, so none can be missed or clipped.
+    private var header: some View {
+        HStack(spacing: 8) {
             Text("Actions")
                 .font(.headline)
+            if let count = model.current?.actions.count {
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+
+            Menu {
+                ForEach(AddKind.allCases) { kind in
+                    Button {
+                        adding = kind
+                    } label: {
+                        Label(kind.title + "…", systemImage: kind.symbol)
+                    }
+                }
+                Divider()
+                Button {
+                    showPresetSheet = true
+                } label: {
+                    Label("Discord preset…", systemImage: "text.badge.plus")
+                }
+            } label: {
+                Label("Add", systemImage: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(!model.canEdit || model.current == nil)
+            .help("Add a click, key press, text, wait and more. It goes after the selected action, or at the end.")
+
             Button {
                 showCheckSheet = true
             } label: {
                 Label("Check", systemImage: "checkmark.shield")
             }
-            .help("Check this macro for common problems, with an optional on-device AI review")
+            .fixedSize()
+            .disabled(model.current == nil)
+            .help("Check this macro for common problems, get Discord tips, and optionally ask the on-device AI")
+
             Button {
                 if !ClickPreview.shared.show(for: model.current ?? Recording(name: "")) {
                     model.showNotice("This macro has no clicks to show.")
@@ -60,82 +149,74 @@ struct EditorView: View {
             } label: {
                 Label("Show Clicks", systemImage: "scope")
             }
-            .help("Briefly draw numbered markers on screen where this macro will click, to see whether anything has moved")
+            .fixedSize()
             .disabled(model.current == nil)
-            Spacer()
-
-            Group {
-                Button {
-                    editSelected()
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .disabled(selection.count != 1)
-                .help("Edit the selected action (or double-click it)")
-
-                Button {
-                    model.duplicateActions(selection)
-                } label: {
-                    Label("Duplicate", systemImage: "plus.square.on.square")
-                }
-                .disabled(selection.isEmpty)
-                .help("Duplicate the selected actions")
-
-                Button {
-                    model.deleteActions(selection)
-                    selection = []
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .disabled(selection.isEmpty)
-                .help("Delete the selected actions (Delete key)")
-
-                Button {
-                    model.moveUp(selection)
-                } label: {
-                    Label("Move up", systemImage: "arrow.up")
-                }
-                .disabled(selection.isEmpty)
-                .help("Move the selected actions up")
-
-                Button {
-                    model.moveDown(selection)
-                } label: {
-                    Label("Move down", systemImage: "arrow.down")
-                }
-                .disabled(selection.isEmpty)
-                .help("Move the selected actions down")
-
-                Button {
-                    showWaitSheet = true
-                } label: {
-                    Label("Insert delay", systemImage: "timer")
-                }
-                .help("Insert a delay after the selected action (or at the end)")
-
-                Button {
-                    showPresetSheet = true
-                } label: {
-                    Label("Insert preset", systemImage: "text.badge.plus")
-                }
-                .help("Insert keyboard-only Discord steps")
-            }
-            .labelStyle(.iconOnly)
-            .disabled(!model.canEdit)
-
-            Divider().frame(height: 16)
-
-            Button {
-                model.playSelection(ids: selection)
-            } label: {
-                Label("Play selection", systemImage: "play.rectangle")
-            }
-            .labelStyle(.iconOnly)
-            .disabled(selection.isEmpty || model.status.isBusy)
-            .help("Replay only the section from the first to the last selected action")
+            .help("Briefly draw numbered markers on screen where this macro will click, to see whether anything has moved")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    /// Edit tools. Shows labels when there is room, otherwise falls back to icons.
+    private var toolsRow: some View {
+        ViewThatFits(in: .horizontal) {
+            tools(showLabels: true)
+            tools(showLabels: false)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .disabled(!model.canEdit)
+    }
+
+    private func tools(showLabels: Bool) -> some View {
+        HStack(spacing: 6) {
+            toolButton("Edit", "pencil", showLabels, enabled: selection.count == 1, help: "Edit the selected action (or double-click it)") {
+                editSelected()
+            }
+            toolButton("Duplicate", "plus.square.on.square", showLabels, enabled: !selection.isEmpty, help: "Duplicate the selected actions") {
+                model.duplicateActions(selection)
+            }
+            toolButton("Delete", "trash", showLabels, enabled: !selection.isEmpty, help: "Delete the selected actions (Delete key)") {
+                model.deleteActions(selection)
+                selection = []
+            }
+            Divider().frame(height: 14)
+            toolButton("Up", "arrow.up", showLabels, enabled: !selection.isEmpty, help: "Move the selected actions up") {
+                model.moveUp(selection)
+            }
+            toolButton("Down", "arrow.down", showLabels, enabled: !selection.isEmpty, help: "Move the selected actions down") {
+                model.moveDown(selection)
+            }
+            Divider().frame(height: 14)
+            toolButton("Play selection", "play.rectangle", showLabels, enabled: !selection.isEmpty && !model.status.isBusy,
+                       help: "Replay only the section from the first to the last selected action") {
+                model.playSelection(ids: selection)
+            }
+            Spacer(minLength: 0)
+            Text(selection.isEmpty ? "Select actions to edit them" : "\(selection.count) selected")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private func toolButton(
+        _ title: String, _ symbol: String, _ showLabels: Bool, enabled: Bool, help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            if showLabels {
+                Label(title, systemImage: symbol)
+            } else {
+                Image(systemName: symbol)
+            }
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .disabled(!enabled)
+        .help(help)
+        .accessibilityLabel(title)
     }
 
     // MARK: List
@@ -147,7 +228,9 @@ struct EditorView: View {
                     ActionRow(
                         index: pair.offset,
                         action: pair.element,
-                        isCurrent: model.currentActionIndex == pair.offset
+                        isCurrent: model.currentActionIndex == pair.offset,
+                        compact: model.settings.rowDensity == .compact,
+                        showDelay: model.settings.showDelaysInList
                     )
                     .tag(pair.element.id)
                     .onTapGesture(count: 2) {
@@ -198,6 +281,8 @@ struct ActionRow: View {
     let index: Int
     let action: MacroAction
     let isCurrent: Bool
+    var compact = false
+    var showDelay = true
 
     var body: some View {
         HStack(spacing: 10) {
@@ -212,13 +297,13 @@ struct ActionRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer()
-            if action.delay > 0.0005 {
+            if showDelay && action.delay > 0.0005 {
                 Text("+" + ActionDescriber.formatSeconds(action.delay))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, compact ? 0 : 3)
         .background(isCurrent ? Color.accentColor.opacity(0.18) : Color.clear)
         .contentShape(Rectangle())
     }
@@ -241,17 +326,29 @@ struct ActionRow: View {
 // MARK: - Edit sheet
 
 struct ActionEditSheet: View {
+    enum Mode {
+        case edit
+        case add(afterID: UUID?)
+    }
+
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var draft: MacroAction
+    let mode: Mode
 
-    init(action: MacroAction) {
+    init(action: MacroAction, mode: Mode) {
         _draft = State(initialValue: action)
+        self.mode = mode
+    }
+
+    private var isAdding: Bool {
+        if case .add = mode { return true }
+        return false
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(draft.kind.displayName)
+            Text((isAdding ? "Add " : "Edit ") + title)
                 .font(.headline)
 
             Form {
@@ -264,14 +361,29 @@ struct ActionEditSheet: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    if model.updateAction(draft) { dismiss() }
+                Button(isAdding ? "Add" : "Save") {
+                    switch mode {
+                    case .edit:
+                        if model.updateAction(draft) { dismiss() }
+                    case .add(let afterID):
+                        if model.insertAction(draft, after: afterID) { dismiss() }
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
         .frame(width: 440)
+    }
+
+    private var title: String {
+        switch draft.kind {
+        case .click:
+            if (draft.clickCount ?? 1) >= 2 { return "double-click" }
+            return (draft.button ?? .left) == .left ? "click" : "\(draft.button?.displayName.lowercased() ?? "") click"
+        default:
+            return draft.kind.displayName.lowercased()
+        }
     }
 
     @ViewBuilder
@@ -290,9 +402,13 @@ struct ActionEditSheet: View {
                 Text("Double").tag(2)
                 Text("Triple").tag(3)
             }
+            heldKeys
         case .scroll:
             TextField("Horizontal (pixels)", value: intBinding(\.scrollX, fallback: 0), format: .number)
             TextField("Vertical (pixels)", value: intBinding(\.scrollY, fallback: 0), format: .number)
+            Text("Positive and negative values scroll in opposite directions. Run it slowly once to check which way it goes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .key:
             keyFields
         case .text:
@@ -317,6 +433,31 @@ struct ActionEditSheet: View {
     private var coordinateFields: some View {
         TextField("X", value: doubleBinding(\.x, fallback: 0), format: .number.precision(.fractionLength(0...2)))
         TextField("Y", value: doubleBinding(\.y, fallback: 0), format: .number.precision(.fractionLength(0...2)))
+        LabeledContent("Position") {
+            Button {
+                model.pickPoint { point in
+                    guard let point = point else { return }
+                    draft.x = Double(point.x.rounded())
+                    draft.y = Double(point.y.rounded())
+                }
+            } label: {
+                Label("Pick on screen", systemImage: "scope")
+            }
+            .help("Click anywhere on screen to fill in X and Y. This window hides for a moment.")
+        }
+    }
+
+    /// Keys held while clicking (for example Shift+click).
+    @ViewBuilder
+    private var heldKeys: some View {
+        LabeledContent("Hold while clicking") {
+            HStack(spacing: 10) {
+                Toggle("⌃", isOn: modifierBinding(.control))
+                Toggle("⌥", isOn: modifierBinding(.option))
+                Toggle("⇧", isOn: modifierBinding(.shift))
+                Toggle("⌘", isOn: modifierBinding(.command))
+            }
+        }
     }
 
     private var buttonPicker: some View {

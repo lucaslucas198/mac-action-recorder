@@ -11,7 +11,7 @@ struct MacActionRecorderApp: App {
             MainView()
                 .environmentObject(model)
         }
-        .defaultSize(width: 940, height: 700)
+        .defaultSize(width: 1040, height: 780)
         .commands {
             AppCommands()
         }
@@ -20,7 +20,7 @@ struct MacActionRecorderApp: App {
             SettingsView()
                 .environmentObject(model)
         }
-        .defaultSize(width: 600, height: 560)
+        .defaultSize(width: 760, height: 640)
 
         MenuBarExtra {
             MenuBarContent(model: model)

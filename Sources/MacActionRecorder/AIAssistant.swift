@@ -71,9 +71,12 @@ enum AIAssistant {
 
     /// Asks the model for edits. The reply is parsed by `AIEditParser`, which accepts only a small
     /// set of safe edits; the user still chooses which ones to apply.
-    static func proposeEdits(for recording: Recording) async throws -> [MacroEdit] {
+    static func proposeEdits(for recording: Recording, profile: String? = nil) async throws -> [MacroEdit] {
         let summary = MacroSummary.numberedText(for: recording)
-        let reply = try await respond(instructions: editInstructions, prompt: "Suggest improvements for this macro.\n\n" + summary)
+        let reply = try await respond(
+            instructions: editInstructions,
+            prompt: "Suggest improvements for this macro.\n\n" + summary + profileBlock(profile)
+        )
         return AIEditParser.parse(reply, recording: recording)
     }
 
@@ -92,14 +95,50 @@ enum AIAssistant {
 
     /// Drafts keyboard steps from a plain-English request. The reply is parsed by `AIMacroDrafter`;
     /// the user reviews the steps before anything is added to a macro.
-    static func draftSteps(for request: String) async throws -> MacroDraft {
-        let reply = try await respond(instructions: draftInstructions, prompt: "Request: " + request)
+    static func draftSteps(for request: String, profile: String? = nil) async throws -> MacroDraft {
+        let reply = try await respond(instructions: draftInstructions, prompt: "Request: " + request + profileBlock(profile))
         return AIMacroDrafter.parse(reply)
     }
 
-    static func review(_ recording: Recording) async throws -> String {
+    static func review(_ recording: Recording, profile: String? = nil) async throws -> String {
         let summary = MacroSummary.text(for: recording)
-        return try await respond(instructions: reviewInstructions, prompt: "Review this macro.\n\n" + summary)
+        return try await respond(instructions: reviewInstructions, prompt: "Review this macro.\n\n" + summary + profileBlock(profile))
+    }
+
+    private static let tipsInstructions = """
+    You give personal suggestions for a Discord macro. You are given the user's own notes about how \
+    they use Discord and a numbered list of their macro's steps. Reply with at most four short \
+    bullet points that connect the two: for example a favorite channel the macro could open first, a \
+    message they send often that it could use, or a pacing or rule note they gave that the macro \
+    might break. Use only facts from the user's notes and the steps. Do not invent channels, \
+    messages or rules. If nothing in the notes applies, reply with one sentence saying so. Do not \
+    ask questions.
+    """
+
+    /// Text-only suggestions that tie the macro to the user's Discord profile. Changes nothing.
+    static func discordTips(for recording: Recording, profile: String) async throws -> String {
+        let summary = MacroSummary.text(for: recording)
+        return try await respond(
+            instructions: tipsInstructions,
+            prompt: "The user's notes:\n" + profile + "\n\nTheir macro:\n" + summary
+        )
+    }
+
+    private static let explainInstructions = """
+    You explain why a Mac macro app stopped a macro on its own. You are given the app's exact \
+    message. Reply in at most three short sentences: what the message means in plain words and the \
+    simplest way to fix it. Use only what the message says. Do not guess about anything else and do \
+    not claim to have seen the screen.
+    """
+
+    /// A plain-words explanation of a safety stop. The stop itself never depends on this.
+    static func explainStop(_ message: String) async throws -> String {
+        return try await respond(instructions: explainInstructions, prompt: "The app's message: " + message)
+    }
+
+    private static func profileBlock(_ profile: String?) -> String {
+        guard let profile = profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty else { return "" }
+        return "\n\nNotes the user gave about how they use Discord (use them only where they help):\n" + profile
     }
 
     static func suggestName(for recording: Recording) async throws -> String {

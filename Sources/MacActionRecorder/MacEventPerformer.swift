@@ -11,23 +11,63 @@ final class MacEventPerformer: ActionPerformer {
     private let source = CGEventSource(stateID: .hidSystemState)
     private let lock = NSLock()
     private var heldButtons: [MouseButton: CGPoint] = [:]
+    private var inputTiming = InputTiming()
+    private var adjuster: ((MacroAction) -> MacroAction)?
+    private var lastPoint: CGPoint?
+    private var lastPostTime = 0.0
+
+    /// Sets how long clicks and key presses take. Call before a run starts.
+    func configure(timing: InputTiming, adjuster: ((MacroAction) -> MacroAction)?) {
+        lock.lock()
+        inputTiming = timing
+        self.adjuster = adjuster
+        lastPoint = nil
+        lastPostTime = 0
+        lock.unlock()
+    }
+
+    private var timing: InputTiming {
+        lock.lock()
+        defer { lock.unlock() }
+        return inputTiming
+    }
+
+    /// Distance in points between where this performer last put the pointer and where the pointer
+    /// is now. Returns nil unless that can be said reliably: the last move must be a moment ago
+    /// (the system may not have applied it yet) and must have been on a display.
+    func pointerDrift() -> Double? {
+        lock.lock()
+        let expected = lastPoint
+        let postedAt = lastPostTime
+        lock.unlock()
+        guard let target = expected,
+              ProcessInfo.processInfo.systemUptime - postedAt > 0.08,
+              Platform.isOnAnyDisplay(target),
+              let now = Platform.pointerLocation() else { return nil }
+        return Double(hypot(now.x - target.x, now.y - target.y))
+    }
 
     // MARK: ActionPerformer
 
-    func perform(_ action: MacroAction) throws {
+    func perform(_ original: MacroAction) throws {
+        lock.lock()
+        let adjust = adjuster
+        lock.unlock()
+        // Follows the target window if it has moved since the macro was recorded.
+        let action = adjust?(original) ?? original
         switch action.kind {
         case .move:
             try moveCursor(to: point(of: action))
 
         case .drag:
             let button = action.button ?? .left
-            try post(mouseEvent(dragType(for: button), at: point(of: action), button: button))
+            try post(mouseEvent(dragType(for: button), at: point(of: action), button: button, modifiers: action.modifiers ?? []))
 
         case .mouseDown:
             let button = action.button ?? .left
             let location = point(of: action)
             try moveCursor(to: location)
-            try post(mouseEvent(downType(for: button), at: location, button: button, clickState: 1))
+            try post(mouseEvent(downType(for: button), at: location, button: button, clickState: 1, modifiers: action.modifiers ?? []))
             lock.lock()
             heldButtons[button] = location
             lock.unlock()
@@ -35,7 +75,7 @@ final class MacEventPerformer: ActionPerformer {
         case .mouseUp:
             let button = action.button ?? .left
             let location = point(of: action)
-            try post(mouseEvent(upType(for: button), at: location, button: button, clickState: 1))
+            try post(mouseEvent(upType(for: button), at: location, button: button, clickState: 1, modifiers: action.modifiers ?? []))
             lock.lock()
             heldButtons[button] = nil
             lock.unlock()
@@ -85,15 +125,18 @@ final class MacEventPerformer: ActionPerformer {
         let count = max(1, min(3, action.clickCount ?? 1))
         let location = point(of: action)
 
+        let modifiers = action.modifiers ?? []
+        let t = timing
+
         try moveCursor(to: location)
-        Thread.sleep(forTimeInterval: 0.012) // let hover state settle before the press
+        Thread.sleep(forTimeInterval: t.settleBeforeClick) // let hover state settle before the press
 
         for index in 1...count {
-            try post(mouseEvent(downType(for: button), at: location, button: button, clickState: index))
-            Thread.sleep(forTimeInterval: 0.010)
-            try post(mouseEvent(upType(for: button), at: location, button: button, clickState: index))
+            try post(mouseEvent(downType(for: button), at: location, button: button, clickState: index, modifiers: modifiers))
+            Thread.sleep(forTimeInterval: t.clickHold)
+            try post(mouseEvent(upType(for: button), at: location, button: button, clickState: index, modifiers: modifiers))
             if index < count {
-                Thread.sleep(forTimeInterval: 0.030)
+                Thread.sleep(forTimeInterval: t.doubleClickGap)
             }
         }
     }
@@ -112,6 +155,9 @@ final class MacEventPerformer: ActionPerformer {
             wheel2: dx,
             wheel3: 0
         )
+        if let modifiers = action.modifiers, !modifiers.isEmpty {
+            event?.flags = EventTapSupport.flags(from: modifiers)
+        }
         try post(event)
     }
 
@@ -131,7 +177,8 @@ final class MacEventPerformer: ActionPerformer {
         _ type: CGEventType,
         at location: CGPoint,
         button: MouseButton,
-        clickState: Int? = nil
+        clickState: Int? = nil,
+        modifiers: KeyModifiers = []
     ) -> CGEvent? {
         let event = CGEvent(
             mouseEventSource: source,
@@ -139,6 +186,9 @@ final class MacEventPerformer: ActionPerformer {
             mouseCursorPosition: location,
             mouseButton: cgButton(button)
         )
+        if !modifiers.isEmpty {
+            event?.flags = EventTapSupport.flags(from: modifiers)
+        }
         if let clickState = clickState {
             event?.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
         }
@@ -193,7 +243,7 @@ final class MacEventPerformer: ActionPerformer {
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         down?.flags = flags
         try post(down)
-        Thread.sleep(forTimeInterval: 0.008)
+        Thread.sleep(forTimeInterval: timing.keyHold)
 
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         up?.flags = flags
@@ -228,5 +278,22 @@ final class MacEventPerformer: ActionPerformer {
         }
         event.setIntegerValueField(.eventSourceUserData, value: EventMarker.userData)
         event.post(tap: .cghidEventTap)
+        noteIfMouse(event)
+    }
+
+    /// Remembers where the pointer was sent, so `pointerDrift` can tell whether someone else moved it.
+    private func noteIfMouse(_ event: CGEvent) {
+        switch event.type {
+        case .mouseMoved,
+             .leftMouseDown, .leftMouseUp, .leftMouseDragged,
+             .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+             .otherMouseDown, .otherMouseUp, .otherMouseDragged:
+            lock.lock()
+            lastPoint = event.location
+            lastPostTime = ProcessInfo.processInfo.systemUptime
+            lock.unlock()
+        default:
+            break
+        }
     }
 }

@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 import MacActionRecorderCore
 
-/// Watches key presses for one global shortcut (the emergency stop).
+/// Watches key presses for two global shortcuts (the emergency stop, and pause/resume).
 ///
 /// It only runs while a recording countdown, a recording or a playback is active, never in
 /// the background while the app is idle. It is a listen-only tap: it cannot block or alter
@@ -11,9 +11,12 @@ final class HotKeyMonitor {
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var hotKey = HotKey.defaultEmergencyStop
+    private var pauseKey: HotKey?
 
     /// Called on the main thread when the shortcut is pressed.
     var onTrigger: (() -> Void)?
+    /// Called on the main thread when the pause/resume shortcut is pressed.
+    var onPause: (() -> Void)?
 
     var isRunning: Bool {
         return tap != nil
@@ -21,9 +24,10 @@ final class HotKeyMonitor {
 
     /// Starts watching. Returns false if macOS refused to create the tap (permission missing).
     @discardableResult
-    func start(hotKey: HotKey) -> Bool {
+    func start(hotKey: HotKey, pauseKey: HotKey? = nil) -> Bool {
         stop()
         self.hotKey = hotKey
+        self.pauseKey = pauseKey
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             if let refcon = refcon {
@@ -69,6 +73,10 @@ final class HotKeyMonitor {
             if hotKey.matches(keyCode: code, modifiers: modifiers) {
                 DispatchQueue.main.async { [weak self] in
                     self?.onTrigger?()
+                }
+            } else if let pause = pauseKey, pause.matches(keyCode: code, modifiers: modifiers) {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onPause?()
                 }
             }
         default:

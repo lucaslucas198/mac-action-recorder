@@ -101,7 +101,7 @@ struct ImproveSection: View {
         isAsking = true
         Task { @MainActor in
             do {
-                let suggestions = try await AIAssistant.proposeEdits(for: recording)
+                let suggestions = try await AIAssistant.proposeEdits(for: recording, profile: model.aiProfile)
                 let known = Set(edits.map { $0.id })
                 let fresh = suggestions.filter { !known.contains($0.id) }
                 edits += fresh
@@ -251,7 +251,7 @@ struct DraftSection: View {
         draft = nil
         Task { @MainActor in
             do {
-                draft = try await AIAssistant.draftSteps(for: text)
+                draft = try await AIAssistant.draftSteps(for: text, profile: model.aiProfile)
             } catch {
                 errorText = error.localizedDescription
             }

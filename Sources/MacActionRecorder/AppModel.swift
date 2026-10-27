@@ -172,6 +172,9 @@ final class AppModel: ObservableObject {
     private let recorder = EventRecorder()
     private let hotKeyMonitor = HotKeyMonitor()
     private let engine: PlaybackEngine
+    private let performer: MacEventPerformer
+    private let safetyBox = SafetyBox()
+    private let follower = WindowFollower()
     private let relay = ProgressRelay()
 
     private var countdownTimer: Timer?
@@ -187,6 +190,14 @@ final class AppModel: ObservableObject {
     private var isApplyingDefaults = false
     private var didHideApp = false
     private var lastRange: Range<Int>?
+    /// Where the pointer was when playback began, to put it back afterwards (if that is switched on).
+    private var pointerAtStart: CGPoint?
+    /// Number of actions the app prepends (opening the start channel) in the current run.
+    private var prefixLength = 0
+    /// Cancels a pending "bring the target to the front" step.
+    private var startupToken = UUID()
+    /// Why the most recent run was stopped by the safety rules, if it was.
+    @Published private(set) var lastSafetyStop: String?
 
     // MARK: Paths
 
@@ -217,9 +228,13 @@ final class AppModel: ObservableObject {
         let loadedStore = SettingsStore(fileURL: settingsURL)
         settingsStore = loadedStore
         settings = loadedStore.load()
+        let performer = MacEventPerformer()
+        let box = safetyBox
+        self.performer = performer
         engine = PlaybackEngine(
-            performer: MacEventPerformer(),
-            frontmostBundleID: { Platform.bundleIDOfFrontmostApp() }
+            performer: performer,
+            frontmostBundleID: { Platform.bundleIDOfFrontmostApp() },
+            safetyCheck: { kind in box.check(kind: kind, performer: performer) }
         )
 
         accessibilityGranted = Permissions.accessibilityGranted
@@ -234,6 +249,11 @@ final class AppModel: ObservableObject {
         hotKeyMonitor.onTrigger = { [weak self] in
             self?.emergencyStop()
         }
+        hotKeyMonitor.onPause = { [weak self] in
+            guard let self = self, self.status.isPlaybackPhase else { return }
+            self.togglePause()
+        }
+        applyAppearance()
 
         openStore()
         reloadRecordings()
@@ -409,7 +429,7 @@ final class AppModel: ObservableObject {
 
     private func beginRecording() {
         do {
-            try recorder.start(options: settings.recording, ignoredHotKey: settings.emergencyStop)
+            try recorder.start(options: settings.recording, ignoredHotKey: settings.emergencyStop, otherIgnoredHotKey: settings.pauseHotKey)
         } catch {
             stopHotKeyMonitor()
             restoreAppIfHidden()
@@ -479,6 +499,7 @@ final class AppModel: ObservableObject {
             targetApp: output.targetApp,
             recordedScreen: Platform.primaryScreenSize(),
             playbackDefaults: defaults,
+            targetWindow: output.targetWindow,
             actions: actions
         )
         recordings.insert(recording, at: 0)
@@ -497,7 +518,8 @@ final class AppModel: ObservableObject {
     private func defaultName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH.mm"
-        return "Recording " + formatter.string(from: Date())
+        let prefix = settings.newMacroNamePrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (prefix.isEmpty ? "Recording" : prefix) + " " + formatter.string(from: Date())
     }
 
     // MARK: Playback
@@ -524,7 +546,9 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let config = makeConfig(for: recording, range: range)
+        var config = makeConfig(for: recording, range: range)
+        let prefix = startPrefix(for: recording, range: range)
+        config.prefixCount = prefix.count
 
         if !skipConfirmation {
             if config.infinite {
@@ -557,35 +581,132 @@ final class AppModel: ObservableObject {
         }
 
         lastRange = range
+        lastSafetyStop = nil
         notice = notice?.isError == true ? nil : notice
         progress = nil
         currentActionIndex = nil
         iteration = 0
         totalIterations = nil
-        status = config.countdown > 0 ? .preparing(config.countdown) : .playing
+        prefixLength = prefix.count
+        status = .preparing(config.countdown)
 
         if !startHotKeyMonitor() {
             showNotice("The emergency-stop shortcut (\(hotKeyText)) is unavailable. Use the menu bar item to stop playback.")
         }
 
+        // The run is the recording, with the "open the start channel" steps in front when one is set.
+        var runRecording = recording
+        if !prefix.isEmpty {
+            runRecording.actions = prefix + recording.actions
+        }
+        armPlayback(for: recording)
+
+        let token = UUID()
+        startupToken = token
         let hiding = settings.hideWindowDuringPlayback
-        hideAppIfWanted(hiding)
-        // Give macOS a moment to hand focus back to the previous app before the first
-        // action (and the optional foreground check) runs.
-        let delay = (hiding && config.countdown == 0) ? 0.4 : 0.0
-        let launch: () -> Void = { [weak self] in
-            guard let self = self, self.status.isPlaybackPhase else { return }
-            do {
-                try self.engine.start(recording: recording, config: config)
-            } catch {
-                self.finishPlayback(.error(error.localizedDescription))
+        bringTargetToFront(recording.targetApp) { [weak self] problem in
+            guard let self = self, self.startupToken == token, self.status.isPlaybackPhase else { return }
+            if let problem = problem {
+                self.finishPlayback(.error(problem))
+                return
+            }
+            self.hideAppIfWanted(hiding)
+            // Give macOS a moment to hand focus back to the previous app before the first
+            // action (and the foreground check) runs.
+            let settle = (hiding && config.countdown == 0) ? 0.4 : 0.0
+            let launch: () -> Void = { [weak self] in
+                guard let self = self, self.startupToken == token, self.status.isPlaybackPhase else { return }
+                do {
+                    Sounds.play(.start, enabled: self.settings.soundEffects)
+                    try self.engine.start(recording: runRecording, config: config)
+                } catch {
+                    self.finishPlayback(.error(error.localizedDescription))
+                }
+            }
+            if settle > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + settle, execute: launch)
+            } else {
+                launch()
             }
         }
-        if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: launch)
-        } else {
-            launch()
+    }
+
+    // MARK: Starting a run
+
+    /// The "open the Discord channel first" steps for this run, if the macro has a start channel.
+    /// They run in the first repetition only, and never when playing just a selected section.
+    private func startPrefix(for recording: Recording, range: Range<Int>?) -> [MacroAction] {
+        guard range == nil, let channel = recording.startChannel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !channel.isEmpty else { return [] }
+        return Presets.openChannel(channel)
+    }
+
+    /// Hands the run its safety rules, window-follow reference and input timing.
+    private func armPlayback(for recording: Recording) {
+        let follow = settings.followTargetWindow
+        safetyBox.arm(
+            options: settings.safety,
+            context: SafetyContext(
+                target: recording.targetApp,
+                recordedWindow: recording.targetWindow,
+                recordedScreen: recording.recordedScreen,
+                followWindow: follow
+            )
+        )
+        follower.configure(recorded: follow ? recording.targetWindow : nil, bundleID: recording.targetApp?.bundleID)
+        let follower = self.follower
+        performer.configure(timing: settings.inputTiming, adjuster: { follower.adjust($0) })
+        pointerAtStart = settings.restorePointerAfterPlayback ? Platform.pointerLocation() : nil
+    }
+
+    /// Brings the macro's app to the front, launching it when it is closed and that is allowed.
+    /// Calls `done(nil)` when ready, or with a plain-language problem. Runs on the main thread.
+    private func bringTargetToFront(_ target: TargetApp?, done: @escaping (String?) -> Void) {
+        guard settings.bringTargetToFront, let target = target, !Platform.isThisApp(target) else {
+            done(nil)
+            return
         }
+        let token = startupToken
+        var launched = false
+
+        if let app = Platform.runningApplication(bundleID: target.bundleID) {
+            Platform.activate(app)
+        } else if settings.launchTargetIfClosed,
+                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: target.bundleID) {
+            launched = true
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+        } else {
+            done("\(target.name) is not running. Open it (or switch on \"Open the app if it is closed\" in Settings > Playback) and try again.")
+            return
+        }
+
+        let limit = launched ? 25.0 : 4.0
+        let began = ProcessInfo.processInfo.systemUptime
+        var lastNudge = began
+
+        func poll() {
+            guard startupToken == token, status.isPlaybackPhase else { return }
+            let waited = ProcessInfo.processInfo.systemUptime - began
+            if let app = Platform.runningApplication(bundleID: target.bundleID) {
+                let frontmost = Platform.bundleIDOfFrontmostApp() == target.bundleID
+                let hasWindow = Platform.frontWindow(pid: app.processIdentifier).frame != nil
+                if frontmost && (hasWindow || !launched) {
+                    // A short settle so the app's UI is ready for the first click.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + (launched ? 1.2 : 0.3)) { done(nil) }
+                    return
+                }
+                if !frontmost && ProcessInfo.processInfo.systemUptime - lastNudge > 0.8 {
+                    lastNudge = ProcessInfo.processInfo.systemUptime
+                    Platform.activate(app)
+                }
+            }
+            if waited > limit {
+                done("Could not bring \(target.name) to the front within \(Int(limit)) seconds, so playback was not started.")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { poll() }
+        }
+        poll()
     }
 
     /// Plays from the first to the last of the given actions (contiguous section).
@@ -635,13 +756,39 @@ final class AppModel: ObservableObject {
     }
 
     private func finishPlayback(_ result: AppStatus) {
+        startupToken = UUID()
+        safetyBox.disarm()
         stopHotKeyMonitor()
         restoreAppIfHidden()
+        restorePointerIfWanted()
         currentActionIndex = nil
+        prefixLength = 0
         status = result
-        if case .error(let message) = result {
-            showNotice(message, isError: true)
+        switch result {
+        case .error(let message):
+            if message.hasPrefix(SafetyWatchdog.messagePrefix) {
+                // An automatic stop because the macro could no longer be run correctly.
+                lastSafetyStop = message
+                status = .stopped("Stopped by safety check")
+                showNotice(message, isError: true)
+            } else {
+                showNotice(message, isError: true)
+            }
+            Sounds.play(.warning, enabled: settings.soundEffects)
+        case .stopped(let text):
+            if text == "Finished" {
+                Sounds.play(.finish, enabled: settings.soundEffects)
+            }
+        default:
+            break
         }
+    }
+
+    private func restorePointerIfWanted() {
+        guard let point = pointerAtStart else { return }
+        pointerAtStart = nil
+        CGWarpMouseCursorPosition(point)
+        CGAssociateMouseAndMouseCursorPosition(1)
     }
 
     private func makeConfig(for recording: Recording, range: Range<Int>?) -> PlaybackConfig {
@@ -691,7 +838,11 @@ final class AppModel: ObservableObject {
 
     private func deliverProgress(index: Int?, progress value: PlaybackProgress?) {
         guard status.isPlaybackPhase else { return }
-        if let index = index { currentActionIndex = index }
+        if let index = index {
+            // The steps that open the start channel come first and are not part of the macro's list.
+            let shown = index - prefixLength
+            currentActionIndex = shown >= 0 ? shown : nil
+        }
         if let value = value { progress = value }
     }
 
@@ -719,7 +870,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     private func startHotKeyMonitor() -> Bool {
-        return hotKeyMonitor.start(hotKey: settings.emergencyStop)
+        return hotKeyMonitor.start(hotKey: settings.emergencyStop, pauseKey: settings.pauseHotKey)
     }
 
     private func stopHotKeyMonitor() {
@@ -809,7 +960,16 @@ final class AppModel: ObservableObject {
     }
 
     func deleteActions(_ ids: Set<UUID>) {
-        guard !ids.isEmpty else { return }
+        guard !ids.isEmpty, canEdit else { return }
+        if settings.confirmBeforeDelete && ids.count >= 3 {
+            let ok = confirm(
+                title: "Delete \(ids.count) actions?",
+                message: "They are removed from this macro. This cannot be undone.",
+                confirmTitle: "Delete",
+                destructive: true
+            )
+            guard ok else { return }
+        }
         edit { $0.deleteActions(ids: ids) }
     }
 
@@ -866,6 +1026,104 @@ final class AppModel: ObservableObject {
         return applied
     }
 
+    // MARK: Adding actions, target app and Discord
+
+    /// Adds one hand-made action after `id` (or at the end), after checking that it is valid.
+    @discardableResult
+    func insertAction(_ action: MacroAction, after id: UUID?) -> Bool {
+        var copy = action
+        copy.id = UUID()
+        if let problem = RecordingValidator.errors(in: RecordingValidator.validate(action: copy)).first {
+            showNotice("That action was not added. \(problem.description)", isError: true)
+            return false
+        }
+        guard canEdit, selectedID != nil else { return false }
+        edit { $0.insertActions([copy], after: id) }
+        return true
+    }
+
+    /// Converts a point the user picked on screen into the space the macro's coordinates use.
+    /// If the target window has moved since it was recorded, playback will shift positions by that
+    /// amount, so the stored point is shifted the opposite way and lands where it was picked.
+    func recordedPoint(forPicked point: CGPoint) -> CGPoint {
+        guard settings.followTargetWindow,
+              let recording = current,
+              let recorded = recording.targetWindow,
+              let target = recording.targetApp,
+              let app = Platform.runningApplication(bundleID: target.bundleID),
+              let now = Platform.frontWindow(pid: app.processIdentifier).frame else { return point }
+        if case .moved(let dx, let dy) = WindowRelocation.assess(recorded: recorded, current: now),
+           now.contains(x: Double(point.x), y: Double(point.y), margin: 0) {
+            return CGPoint(x: point.x - dx, y: point.y - dy)
+        }
+        return point
+    }
+
+    /// The user's Discord notes for AI prompts, or nil when that is switched off.
+    var aiProfile: String? {
+        return settings.aiUsesDiscordProfile ? settings.discord.promptContext : nil
+    }
+
+    func isDiscordMacro(_ recording: Recording?) -> Bool {
+        guard let target = recording?.targetApp else { return false }
+        return DiscordProfile.isDiscord(bundleID: target.bundleID, name: target.name)
+    }
+
+    func setTargetApp(_ app: TargetApp?) {
+        edit { recording in
+            recording.targetApp = app
+            if app == nil { recording.targetWindow = nil }
+        }
+    }
+
+    func setStartChannel(_ channel: String) {
+        let trimmed = String(channel.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+        edit { $0.startChannel = trimmed.isEmpty ? nil : trimmed }
+    }
+
+    /// Uses the target app's window as it is right now as the reference position.
+    func captureTargetWindow() {
+        guard let target = current?.targetApp else {
+            showNotice("Choose a target app first.")
+            return
+        }
+        guard let app = Platform.runningApplication(bundleID: target.bundleID) else {
+            showNotice("\(target.name) is not running, so its window position cannot be read.", isError: true)
+            return
+        }
+        let reading = Platform.frontWindow(pid: app.processIdentifier)
+        guard let frame = reading.frame else {
+            showNotice("No on-screen \(target.name) window was found.", isError: true)
+            return
+        }
+        edit { $0.targetWindow = frame }
+        showNotice("Saved the \(target.name) window position (\(Int(frame.width))×\(Int(frame.height))) as this macro's reference.")
+    }
+
+    func clearTargetWindow() {
+        edit { $0.targetWindow = nil }
+    }
+
+    /// Lets the user click a point on screen, then hands back the point in macro coordinates.
+    func pickPoint(_ completion: @escaping (CGPoint?) -> Void) {
+        ScreenPicker.shared.pick { [weak self] point in
+            guard let self = self else { return }
+            if let point = point {
+                completion(self.recordedPoint(forPicked: point))
+            } else {
+                completion(nil)
+            }
+        }
+    }
+
+    func applyAppearance() {
+        switch settings.appearance {
+        case .system: NSApp?.appearance = nil
+        case .light: NSApp?.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp?.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+
     // MARK: Macro check
 
     /// Built-in checks for the selected macro, using the current playback controls and settings.
@@ -875,7 +1133,8 @@ final class AppModel: ObservableObject {
             recording: recording,
             playback: currentDefaults,
             verifyForeground: settings.verifyForeground,
-            currentScreen: Platform.primaryScreenSize()
+            currentScreen: Platform.primaryScreenSize(),
+            discord: isDiscordMacro(current) ? settings.discord : nil
         )
     }
 
@@ -1006,13 +1265,15 @@ final class AppModel: ObservableObject {
 
     func delete(_ id: UUID) {
         guard canEdit, let recording = recordings.first(where: { $0.id == id }) else { return }
-        let ok = confirm(
-            title: "Delete “\(recording.name)”?",
-            message: "The macro file will be permanently deleted from this Mac. Exported copies are not affected.",
-            confirmTitle: "Delete",
-            destructive: true
-        )
-        guard ok else { return }
+        if settings.confirmBeforeDelete {
+            let ok = confirm(
+                title: "Delete “\(recording.name)”?",
+                message: "The macro file will be permanently deleted from this Mac. Exported copies are not affected.",
+                confirmTitle: "Delete",
+                destructive: true
+            )
+            guard ok else { return }
+        }
         removeRecording(id)
     }
 
@@ -1169,8 +1430,12 @@ final class AppModel: ObservableObject {
             selectedID = recordings.first?.id
             applyDefaults(from: current)
         }
-        if old.emergencyStop != settings.emergencyStop, hotKeyMonitor.isRunning {
+        if (old.emergencyStop != settings.emergencyStop || old.pauseHotKey != settings.pauseHotKey),
+           hotKeyMonitor.isRunning {
             startHotKeyMonitor()
+        }
+        if old.appearance != settings.appearance {
+            applyAppearance()
         }
     }
 
