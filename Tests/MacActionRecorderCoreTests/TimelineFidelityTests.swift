@@ -272,15 +272,17 @@ final class TimelineFidelityTests: XCTestCase {
         XCTAssertEqual(seen.count, 2)
         guard seen.count == 2 else { return }
         let slowTook = ended - seen[0]
-        if slowTook < PlaybackSchedule.maxLag - 0.01 {
+        // Never earlier than the timeline allows.
+        XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.99)
+        if slowTook < PlaybackSchedule.maxLag - 0.03 {
             // On the timeline: 1.0 s after the first started, not 1.0 s after it finished.
             // The margin allows for a busy test machine waking the thread late.
             XCTAssertLessThan(seen[1] - seen[0], 1.25, "a sanity bound only; the exact rule is tested without a clock below")
-            XCTAssertGreaterThanOrEqual(seen[1] - seen[0], 0.99)
-        } else {
+        } else if slowTook > PlaybackSchedule.maxLag + 0.03 {
             // Too far behind: the timeline restarts from the end of the slow step.
             XCTAssertGreaterThanOrEqual(seen[1] - ended, 0.99)
         }
+        // In between, the busy test machine decides which rule applied; both are correct.
     }
 
     func testPlannedSpanCoversHoldsAndTyping() {

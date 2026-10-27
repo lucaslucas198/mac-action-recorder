@@ -234,7 +234,17 @@ public final class PlaybackEngine {
     // MARK: Run loop
 
     private func execute(run: Run, actions: [MacroAction], firstIndex: Int, config: PlaybackConfig) {
-        defer { performer.cleanup() }
+        // While a macro plays, the app is usually hidden behind the app it controls. macOS would
+        // then put it into App Nap and let its timers run late; this asks for precise timers and
+        // keeps the Mac from going to sleep in the middle of a run.
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Playing a recorded macro"
+        )
+        defer {
+            performer.cleanup()
+            ProcessInfo.processInfo.endActivity(activity)
+        }
 
         // Countdown before the first action.
         if config.countdown > 0 {

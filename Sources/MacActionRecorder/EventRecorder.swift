@@ -62,6 +62,9 @@ final class EventRecorder {
 
     private var cachedFrames: [CGRect] = []
     private var framesCachedAt: Double = 0
+    /// Keeps macOS from putting the app into App Nap while it records in the background, which
+    /// would delay reading events (and can make macOS switch the event tap off).
+    private var activity: NSObjectProtocol?
 
     private let maxEvents = 500_000
 
@@ -115,12 +118,20 @@ final class EventRecorder {
         tap = installed.tap
         source = installed.source
         isRecording = true
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Recording a macro"
+        )
     }
 
     /// Stops capturing and returns everything recorded.
     func stop() -> Output {
         if let tap = tap, let source = source {
             EventTapSupport.remove(tap: tap, source: source)
+        }
+        if let running = activity {
+            ProcessInfo.processInfo.endActivity(running)
+            activity = nil
         }
         tap = nil
         source = nil
