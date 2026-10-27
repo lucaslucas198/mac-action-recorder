@@ -224,8 +224,8 @@ public enum MacroAnalyzer {
     }
 
     /// Counts messages (a plain Return after typed text) sent less than `minimumGap` seconds after the
-    /// previous one. Only recorded delays and waits count; typing time is ignored, so this errs
-    /// towards not warning.
+    /// previous one. Delays, waits, and the recorded time of clicks and typing count; text without a
+    /// recorded typing time counts as instant, so such gaps can come out a little short.
     static func closeMessageCount(_ actions: [MacroAction], minimumGap: Double) -> Int {
         guard minimumGap > 0 else { return 0 }
         var elapsed = 0.0
@@ -234,7 +234,9 @@ public enum MacroAnalyzer {
         var close = 0
         for action in actions {
             elapsed += max(0, action.delay)
-            if action.kind == .wait { elapsed += max(0, action.duration ?? 0) }
+            if action.kind == .wait || action.kind == .click || action.kind == .text {
+                elapsed += max(0, action.duration ?? 0)
+            }
             if action.kind == .text { typedSinceSend = true }
             let isSend = action.kind == .key
                 && (action.keyCode == KeyCodes.returnKey || action.keyCode == KeyCodes.keypadEnter)
