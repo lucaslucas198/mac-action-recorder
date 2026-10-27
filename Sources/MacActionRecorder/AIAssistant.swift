@@ -9,14 +9,12 @@ enum AIAssistantError: LocalizedError {
     case unavailable(String)
     case emptyReply
     case timedOut(Int)
-    case busy
 
     var errorDescription: String? {
         switch self {
         case .unavailable(let reason): return reason
         case .emptyReply: return "The model returned an empty answer. Try again."
         case .timedOut(let seconds): return "The on-device model did not answer within \(seconds) seconds, so the request was stopped. Try again; the first request after starting the Mac is the slowest."
-        case .busy: return "The on-device model is still working on another request. Wait for it to finish."
         }
     }
 }
@@ -210,32 +208,12 @@ enum AIAssistant {
     /// Longest time one request may take before it is stopped.
     static let timeLimit = 60
 
-    private static let gate = NSLock()
-    private static var running = 0
-
-    /// One request at a time: the on-device model answers one prompt at a time anyway, and a second
-    /// request would only wait behind the first.
-    private static func enter() throws {
-        gate.lock()
-        defer { gate.unlock() }
-        guard running == 0 else { throw AIAssistantError.busy }
-        running += 1
-    }
-
-    private static func leave() {
-        gate.lock()
-        running = max(0, running - 1)
-        gate.unlock()
-    }
-
     private static func respond(instructions: String, prompt: String, maxTokens: Int = 600) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             guard availability.isAvailable else {
                 throw AIAssistantError.unavailable(availability.message)
             }
-            try enter()
-            defer { leave() }
             // Short prompts keep the answer fast and inside the model's context window.
             let trimmed = String(prompt.prefix(6000))
             return try await withTimeLimit(seconds: timeLimit) {
@@ -279,5 +257,39 @@ enum AIAssistant {
                 once.resume(.failure(CancellationError()))
             }
         }
+    }
+}
+
+extension AIAssistant {
+    /// Plain words for an AI error, including a cancelled request.
+    static func describe(_ error: Error) -> String {
+        if error is CancellationError { return "Stopped." }
+        return error.localizedDescription
+    }
+}
+
+/// The AI request that is running (at most one), so any screen can show how long it has been
+/// thinking and offer to stop it.
+final class AIActivity: ObservableObject {
+    static let shared = AIActivity()
+
+    @Published private(set) var isRunning = false
+    @Published private(set) var startedAt = Date()
+    private var task: Task<Void, Never>?
+
+    /// Runs `body` as the current AI request.
+    func run(_ body: @escaping @MainActor () async -> Void) {
+        task?.cancel()
+        startedAt = Date()
+        isRunning = true
+        task = Task { @MainActor [weak self] in
+            await body()
+            self?.isRunning = false
+            self?.task = nil
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
     }
 }

@@ -92,12 +92,11 @@ struct MacroCheckSheet: View {
                     } label: {
                         Label("Suggest a name", systemImage: "textformat")
                     }
-                    if isWorking {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
                 }
                 .disabled(isWorking || model.current == nil)
+                if isWorking {
+                    AIWorkingView()
+                }
 
                 if !suggestedName.isEmpty {
                     HStack {
@@ -141,11 +140,11 @@ struct MacroCheckSheet: View {
         guard let recording = model.current else { return }
         isWorking = true
         aiError = nil
-        Task { @MainActor in
+        AIActivity.shared.run { @MainActor in
             do {
                 reviewText = try await AIAssistant.review(recording, profile: model.aiProfile)
             } catch {
-                aiError = error.localizedDescription
+                aiError = AIAssistant.describe(error)
             }
             isWorking = false
         }
@@ -155,11 +154,11 @@ struct MacroCheckSheet: View {
         guard let recording = model.current else { return }
         isWorking = true
         aiError = nil
-        Task { @MainActor in
+        AIActivity.shared.run { @MainActor in
             do {
                 suggestedName = try await AIAssistant.suggestName(for: recording)
             } catch {
-                aiError = error.localizedDescription
+                aiError = AIAssistant.describe(error)
             }
             isWorking = false
         }
@@ -225,7 +224,7 @@ struct LastStopSection: View {
                         Label("Explain in plain words (AI)", systemImage: "sparkles")
                     }
                     .disabled(isWorking)
-                    if isWorking { ProgressView().controlSize(.small) }
+                    if isWorking { AIWorkingView() }
                 }
             }
             if !explanation.isEmpty {
@@ -249,11 +248,11 @@ struct LastStopSection: View {
         guard let reason = model.lastSafetyStop else { return }
         isWorking = true
         errorText = nil
-        Task { @MainActor in
+        AIActivity.shared.run { @MainActor in
             do {
                 explanation = try await AIAssistant.explainStop(reason)
             } catch {
-                errorText = error.localizedDescription
+                errorText = AIAssistant.describe(error)
             }
             isWorking = false
         }
@@ -315,7 +314,7 @@ struct DiscordCoachSection: View {
                             Label("Personal tips (AI)", systemImage: "sparkles")
                         }
                         .disabled(isWorking || recording == nil)
-                        if isWorking { ProgressView().controlSize(.small) }
+                        if isWorking { AIWorkingView() }
                     }
                 } else {
                     Label(AIAssistant.availability.message, systemImage: "info.circle")
@@ -350,11 +349,11 @@ struct DiscordCoachSection: View {
         isWorking = true
         errorText = nil
         let notes = model.settings.discord.promptContext
-        Task { @MainActor in
+        AIActivity.shared.run { @MainActor in
             do {
                 tips = try await AIAssistant.discordTips(for: recording, profile: notes)
             } catch {
-                errorText = error.localizedDescription
+                errorText = AIAssistant.describe(error)
             }
             isWorking = false
         }

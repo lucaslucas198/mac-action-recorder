@@ -31,10 +31,7 @@ struct ImproveSection: View {
                 .disabled(isAsking || model.current == nil || !model.canEdit)
 
                 if isAsking {
-                    ProgressView().controlSize(.small)
-                    Text("Asking the on-device AI…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    AIWorkingView()
                 }
 
                 Spacer()
@@ -99,7 +96,7 @@ struct ImproveSection: View {
             return
         }
         isAsking = true
-        Task { @MainActor in
+        AIActivity.shared.run { @MainActor in
             do {
                 let suggestions = try await AIAssistant.proposeEdits(for: recording, profile: model.aiProfile)
                 let known = Set(edits.map { $0.id })
@@ -110,7 +107,7 @@ struct ImproveSection: View {
                     ? "The AI had no further suggestions. Its suggestions can be wrong, so check each one."
                     : "Items marked AI come from the on-device model and can be wrong. Check each one."
             } catch {
-                aiNote = "AI suggestions failed: \(error.localizedDescription)"
+                aiNote = "AI suggestions failed: \(AIAssistant.describe(error))"
             }
             isAsking = false
         }
@@ -184,7 +181,7 @@ struct DraftSection: View {
                     Button("Draft") { run() }
                         .disabled(isWorking || trimmedRequest.isEmpty || !model.canEdit)
                     if isWorking {
-                        ProgressView().controlSize(.small)
+                        AIWorkingView()
                     }
                 }
 
@@ -249,11 +246,11 @@ struct DraftSection: View {
         isWorking = true
         errorText = nil
         draft = nil
-        Task { @MainActor in
+        AIActivity.shared.run { @MainActor in
             do {
                 draft = try await AIAssistant.draftSteps(for: text, profile: model.aiProfile)
             } catch {
-                errorText = error.localizedDescription
+                errorText = AIAssistant.describe(error)
             }
             isWorking = false
         }
