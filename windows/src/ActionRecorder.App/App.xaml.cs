@@ -130,8 +130,9 @@ public partial class App : Application
 
             model.SetupStageDwellMilliseconds = 0;
             window.Welcome.StartSetup();
-            await Task.Delay(200);
-            await model.RunSetupAsync();
+            // StartSetup() already runs the checks; wait for them to finish (they are real probes, including the optional AI lookup).
+            var waited = 0;
+            while (!model.SetupDone && waited < 30000) { await Task.Delay(100); waited += 100; }
             report.Check(model.SetupDone && model.SetupFraction >= 1, "Welcome checks finish", $"fraction={model.SetupFraction}");
             foreach (var check in model.SetupChecks) report.Info($"setup: {check.Title} = {check.State}: {check.Detail}");
             model.CompleteWelcome();
