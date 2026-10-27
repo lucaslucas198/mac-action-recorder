@@ -4,12 +4,12 @@
 
 ## 0.6.0
 
-Mac app (Windows unchanged). Focus: installing, one copy of the app, permissions, and a smoother first run.
+Mac app. Focus: installing, one copy of the app, permissions, replay timing, and a smoother first run. (Windows: only an internal ordering fix for the administrator warning; nothing visible changes.)
 
 **One copy of the app**
 
 - Only one copy runs at a time. If you open a second one, the newer version (or, for the same version, the one in Applications) stays and the other quits.
-- **Quit and Reopen** now waits until the app has really quit and then opens the copy in Applications. Before, it could start a second copy, or an old copy from a disk image that was still open.
+- **Quit and Reopen** now waits until the app has really quit and then opens the copy in Applications (or the running copy again, if the one in Applications is older). Before, it could start a second copy, or an old copy from a disk image that was still open.
 - Old Mac Action Recorder disk images that are still open are ejected, and other copies of the app are moved to the **Trash**, not deleted. Setup looks in Applications, Downloads and on the Desktop and asks Spotlight (macOS may ask once whether the app may look in Downloads or Desktop); at each later launch it quietly checks Applications and Spotlight. A note says what was done.
 
 **Installing**

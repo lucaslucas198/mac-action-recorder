@@ -226,8 +226,11 @@ final class EventRecorder {
     private func eventTime(for event: CGEvent) -> Double {
         let arrival = ProcessInfo.processInfo.systemUptime
         var time = arrival
+        // The stamp is accepted when it lies before the arrival (by at most 10 s: the app can be
+        // busy for a while, and then the stamp is exactly the time that matters). A stamp from
+        // another clock would be hours off and is ignored.
         if options.preciseTiming, let stamp = NSEvent(cgEvent: event)?.timestamp,
-           stamp > 0, abs(stamp - arrival) < 0.5 {
+           stamp > 0, stamp <= arrival + 0.05, arrival - stamp < 10 {
             time = stamp
             stampedEvents += 1
             largestReadDelay = max(largestReadDelay, arrival - stamp)

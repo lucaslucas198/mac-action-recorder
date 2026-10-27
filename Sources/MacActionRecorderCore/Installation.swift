@@ -97,6 +97,17 @@ public enum Installation {
         }
     }
 
+    /// Which copy "Quit and Reopen" should open: the installed one, unless it is older than the
+    /// copy that is running (for example a new download opened before setup), in which case the
+    /// running copy is opened again so the user never ends up in an older version.
+    public static func reopenTarget(selfPath: String, selfVersion: String?, installedPath: String?, installedVersion: String?) -> String {
+        guard let installed = installedPath else { return selfPath }
+        if let mine = selfVersion.flatMap(AppVersion.init), let theirs = installedVersion.flatMap(AppVersion.init), theirs < mine {
+            return selfPath
+        }
+        return installed
+    }
+
     // MARK: Other copies
 
     /// From the paths Spotlight reports for this app's bundle ID, the ones to move to the Trash.

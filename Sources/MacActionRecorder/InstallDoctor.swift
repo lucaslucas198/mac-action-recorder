@@ -321,7 +321,13 @@ enum InstallDoctor {
     /// this process has really ended, so two copies never run at once.
     static func relaunch() {
         let installed = destinationIfInstalled()
-        let target = installed ?? selfPath
+        let installedVersion = installed.flatMap { Bundle(path: $0)?.infoDictionary?["CFBundleShortVersionString"] as? String }
+        let target = Installation.reopenTarget(
+            selfPath: selfPath,
+            selfVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+            installedPath: installed,
+            installedVersion: installedVersion
+        )
         let helper = Process()
         helper.executableURL = URL(fileURLWithPath: "/bin/sh")
         helper.arguments = ["-c", Installation.reopenScript, "sh", String(ProcessInfo.processInfo.processIdentifier), target, "20"]

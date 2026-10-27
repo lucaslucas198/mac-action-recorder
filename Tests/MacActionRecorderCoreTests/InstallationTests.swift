@@ -131,4 +131,14 @@ final class InstallationTests: XCTestCase {
         XCTAssertTrue(Installation.swapScript.contains("dest=\"$3\""))
         XCTAssertFalse(Installation.swapScript.contains("Mac Action Recorder"))
     }
+
+    func testReopenOpensTheInstalledCopyUnlessItIsOlder() {
+        let me = "/Volumes/Mac Action Recorder/Mac Action Recorder.app"
+        let installed = "/Applications/Mac Action Recorder.app"
+        XCTAssertEqual(Installation.reopenTarget(selfPath: me, selfVersion: "0.6.0", installedPath: installed, installedVersion: "0.6.0"), installed)
+        XCTAssertEqual(Installation.reopenTarget(selfPath: me, selfVersion: "0.6.0", installedPath: installed, installedVersion: "0.7.0"), installed)
+        XCTAssertEqual(Installation.reopenTarget(selfPath: me, selfVersion: "0.6.0", installedPath: installed, installedVersion: "0.5.0"), me)
+        XCTAssertEqual(Installation.reopenTarget(selfPath: me, selfVersion: "0.6.0", installedPath: nil, installedVersion: nil), me)
+        XCTAssertEqual(Installation.reopenTarget(selfPath: installed, selfVersion: "0.6.0", installedPath: installed, installedVersion: "0.6.0"), installed)
+    }
 }
