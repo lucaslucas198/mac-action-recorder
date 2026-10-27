@@ -606,7 +606,7 @@ private struct HomePage: View {
                         Text("Get Started")
                         Image(systemName: "arrow.right")
                     }
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(deep)
                     .frame(width: 300, height: 54)
                     .background(Capsule().fill(Color.white))

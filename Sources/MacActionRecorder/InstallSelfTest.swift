@@ -154,7 +154,29 @@ enum InstallSelfTest {
         check(InstallDoctor.isSameItem("/System/Volumes/Data" + dest.path, dest.path) || !fm.fileExists(atPath: "/System/Volumes/Data" + dest.path),
               "a firmlinked path counts as the same copy")
 
-        // 6. Spotlight and the permission reset command run without errors.
+        // 6. One copy at a time: a second copy started later quits and leaves the first one running.
+        let fileA = work.appendingPathComponent("instance-a.txt")
+        let fileB = work.appendingPathComponent("instance-b.txt")
+        _ = InstallDoctor.run("/usr/bin/open", ["-n", "-g", dest.path, "--args", "--selftest-instance", fileA.path])
+        for _ in 0..<40 where !fm.fileExists(atPath: fileA.path) { Thread.sleep(forTimeInterval: 0.25) }
+        let firstSaid = (try? String(contentsOf: fileA, encoding: .utf8)) ?? "nothing"
+        log("First copy: " + firstSaid)
+        check(firstSaid == "stayed", "the first copy stays when it is the only one")
+        let second = Process()
+        second.executableURL = URL(fileURLWithPath: InstallDoctor.selfPath + "/Contents/MacOS/MacActionRecorder")
+        second.arguments = ["--selftest-instance", fileB.path]
+        try? second.run()
+        let quitBy = Date().addingTimeInterval(15)
+        while second.isRunning && Date() < quitBy { Thread.sleep(forTimeInterval: 0.2) }
+        let secondSaid = (try? String(contentsOf: fileB, encoding: .utf8)) ?? "nothing"
+        log("Second copy: " + secondSaid + (second.isRunning ? " (still running)" : " (quit)"))
+        check(secondSaid == "quit" && !second.isRunning, "a second copy started later quits by itself")
+        let firstStillRuns = !NSRunningApplication.runningApplications(withBundleIdentifier: Installation.bundleID)
+            .filter { $0.bundleURL?.standardizedFileURL.path == dest.standardizedFileURL.path }.isEmpty
+        check(firstStillRuns, "the first copy is still running")
+        if second.isRunning { second.terminate() }
+
+        // 7. Spotlight and the permission reset command run without errors.
         let found = InstallDoctor.run("/usr/bin/mdfind", ["kMDItemCFBundleIdentifier == '\(Installation.bundleID)'"])
         log("mdfind status \(found.status): " + (found.output.flatMap { String(data: $0, encoding: .utf8) } ?? "").replacingOccurrences(of: "\n", with: " | "))
         check(found.status == 0, "Spotlight search runs")

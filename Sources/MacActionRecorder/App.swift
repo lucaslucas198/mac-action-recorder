@@ -50,7 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // Only one copy of the app may run. If another one should stay, this copy quits here.
-        if InstallDoctor.resolveDuplicateInstancesAtLaunch() {
+        let quitting = InstallDoctor.resolveDuplicateInstancesAtLaunch()
+        // CI only: report what the one-copy check decided, then stay open briefly.
+        if let index = CommandLine.arguments.firstIndex(of: "--selftest-instance"), index + 1 < CommandLine.arguments.count {
+            let file = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+            try? (quitting ? "quit" : "stayed").write(to: file, atomically: true, encoding: .utf8)
+            if !quitting {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 20) { exit(0) }
+            }
+            return
+        }
+        if quitting {
             return
         }
         // Makes `swift run` (no app bundle) behave like a normal windowed app as well.

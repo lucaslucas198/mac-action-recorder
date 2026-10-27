@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## 0.6.0
+
+Mac app (Windows unchanged). Focus: installing, one copy of the app, permissions, and a smoother first run.
+
+**One copy of the app**
+
+- Only one copy runs at a time. If you open a second one, the newer version (or, for the same version, the one in Applications) stays and the other quits.
+- **Quit and Reopen** now waits until the app has really quit and then opens the copy in Applications. Before, it could start a second copy, or an old copy from a disk image that was still open.
+- Old Mac Action Recorder disk images that are still open are ejected, and other copies of the app (for example in Downloads) are moved to the **Trash**, not deleted. This runs during setup and quietly at each launch, and a note says what was done.
+
+**Installing**
+
+- The welcome screen now fills the window. **Get Started** slides over to the setup page and starts installing by itself.
+- The setup page shows every step with a moving progress bar and percentage, the step's explanation, the latest line from the signing tool, seconds spent, and a checklist with the time each finished step took. If signing waits on a macOS prompt, it says so; after 30 s you can **Continue Without Signing**.
+- Opening a newly downloaded copy (dragged into Applications, or straight from the disk image) finishes its own setup: it is signed with the same certificate as before, so the permissions you already switched on keep working, and the setup page closes by itself when nothing is left to do.
+- Setup never repeats itself in a loop: if replacing the app fails, it stops and says what to do.
+- New disk image instructions: 1. drag onto Applications, 2. open it from there.
+
+**Permissions**
+
+- When the app's signature changed and the permissions stopped working, the old entries are removed from the Input Monitoring and Accessibility lists automatically (they looked switched on but did nothing, and blocked adding the app again). The first launch of 0.6.0 does this once if the permissions are not working.
+- The permission step has numbered instructions, an **Open … Settings** button for each list, live checkmarks, **Check Again**, **Quit and Reopen** and **Repair…**. The orange bar in the main window has **Fix Permissions…**.
+
+**On-device AI**
+
+- The model is loaded ahead of time when the Check sheet opens, answers use a low temperature so the strict reply formats are followed more often, one request runs at a time, prompts are kept short, and a request that takes longer than 60 seconds is stopped with a clear message instead of spinning forever.
+
+**Layout**
+
+- Playback controls no longer clip at the smallest window size (repeat count and wait now have their own row).
+- CI now draws every main screen to images on each push (`ci-screenshots-mac` branch), which is how these layout problems were found.
+
+**Verification**
+
+- CI runs the real install machinery on a macOS 26 runner on every push and fails if any check fails (see README > Verification status for exactly what is and is not covered).
+
 ## 0.5.0
 
 Mac app (the Windows app is unchanged in this version). CI compiles the app and runs the core unit tests; none of the new behavior has been run on a real Mac yet, see README > Verification status.
