@@ -49,7 +49,12 @@ enum Platform {
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
     }
 
+    /// The frontmost app's bundle ID. Off the main thread it is answered at once from
+    /// `FrontmostTracker` when that runs, so playback never waits for a busy main thread.
     static func bundleIDOfFrontmostApp() -> String? {
+        if !Thread.isMainThread, FrontmostTracker.shared.isRunning {
+            return FrontmostTracker.shared.current
+        }
         if Thread.isMainThread {
             return NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         }
@@ -59,6 +64,16 @@ enum Platform {
     }
 
     // MARK: Apps, windows and displays
+
+    /// The process ID of the running app with this bundle ID, looked up on the main thread.
+    static func pid(ofBundleID bundleID: String) -> pid_t? {
+        return onMain { runningApplication(bundleID: bundleID)?.processIdentifier }
+    }
+
+    /// True while the process exists (from any thread, without asking the main thread).
+    static func isProcessAlive(_ pid: pid_t) -> Bool {
+        return kill(pid, 0) == 0 || errno == EPERM
+    }
 
     /// The app with this bundle ID, if it is running and has not quit.
     static func runningApplication(bundleID: String) -> NSRunningApplication? {
@@ -137,5 +152,54 @@ enum Platform {
     /// A running Discord (any release channel), if there is one.
     static func findDiscord() -> TargetApp? {
         return runningApps().first { DiscordProfile.isDiscord(bundleID: $0.bundleID, name: $0.name) }
+    }
+}
+
+/// Follows which app is in front through macOS's activation notifications, so the playback
+/// thread can read it instantly instead of waiting for the main thread (which may be busy
+/// drawing the window) before every click and key press.
+final class FrontmostTracker {
+    static let shared = FrontmostTracker()
+
+    private let lock = NSLock()
+    private var bundleID: String?
+    private var observer: NSObjectProtocol?
+
+    /// Call on the main thread. Calling it again does nothing.
+    func start() {
+        lock.lock()
+        let started = observer != nil
+        lock.unlock()
+        guard !started else { return }
+        set(NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+        let token = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.set(app?.bundleIdentifier)
+        }
+        lock.lock()
+        observer = token
+        lock.unlock()
+    }
+
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return observer != nil
+    }
+
+    var current: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return bundleID
+    }
+
+    private func set(_ value: String?) {
+        lock.lock()
+        bundleID = value
+        lock.unlock()
     }
 }

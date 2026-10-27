@@ -66,6 +66,8 @@ enum InputSelfTest {
         Thread.sleep(forTimeInterval: 1.0)
 
         let target = CGPoint(x: frame.x + frame.width * 0.5, y: frame.y + frame.height * 0.6)
+        // As in the app: playback reads the frontmost app without waiting for the main thread.
+        Platform.onMain { FrontmostTracker.shared.start() }
 
         // 2. Record.
         let recorder = EventRecorder()

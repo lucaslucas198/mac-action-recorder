@@ -73,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if quitting {
             return
         }
+        // Lets playback check which app is in front without waiting for the main thread.
+        FrontmostTracker.shared.start()
         // Makes `swift run` (no app bundle) behave like a normal windowed app as well.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)

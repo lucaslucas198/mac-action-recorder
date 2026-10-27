@@ -8,12 +8,29 @@ final class SafetyBox {
     private let lock = NSLock()
     private var options = SafetyOptions()
     private var context: SafetyContext?
+    /// The target app's process, remembered so most checks need not ask the main thread.
+    private var targetPID: pid_t?
 
     func arm(options: SafetyOptions, context: SafetyContext) {
         lock.lock()
         self.options = options
         self.context = context
+        targetPID = nil
         lock.unlock()
+    }
+
+    /// The target's process if it is running: the remembered one while it is alive, otherwise
+    /// looked up again (the app may have been opened or reopened since).
+    private func runningPID(of bundleID: String) -> pid_t? {
+        lock.lock()
+        let cached = targetPID
+        lock.unlock()
+        if let pid = cached, Platform.isProcessAlive(pid) { return pid }
+        let found = Platform.pid(ofBundleID: bundleID)
+        lock.lock()
+        targetPID = found
+        lock.unlock()
+        return found
     }
 
     func disarm() {
@@ -32,10 +49,10 @@ final class SafetyBox {
 
         var snapshot = SafetySnapshot()
         if let target = context.target {
-            let app = Platform.onMain { Platform.runningApplication(bundleID: target.bundleID) }
-            snapshot.targetRunning = (app != nil)
-            if let app = app {
-                let reading = Platform.frontWindow(pid: app.processIdentifier)
+            let pid = runningPID(of: target.bundleID)
+            snapshot.targetRunning = (pid != nil)
+            if let pid = pid {
+                let reading = Platform.frontWindow(pid: pid)
                 snapshot.windowKnown = reading.readable
                 snapshot.window = reading.frame
             }
@@ -62,6 +79,7 @@ final class WindowFollower {
     private var bundleID: String?
     private var cachedFrame: WindowFrame?
     private var cachedAt = 0.0
+    private var cachedPID: pid_t?
 
     func configure(recorded: WindowFrame?, bundleID: String?) {
         lock.lock()
@@ -69,6 +87,7 @@ final class WindowFollower {
         self.bundleID = bundleID
         cachedFrame = nil
         cachedAt = 0
+        cachedPID = nil
         lock.unlock()
     }
 
@@ -98,9 +117,16 @@ final class WindowFollower {
         }
         lock.unlock()
 
-        guard let app = Platform.onMain({ Platform.runningApplication(bundleID: bundleID) }),
-              let frame = Platform.frontWindow(pid: app.processIdentifier).frame else { return nil }
+        // The process is remembered, so reading the window position needs no trip to the main thread.
         lock.lock()
+        var pid = cachedPID
+        lock.unlock()
+        if pid == nil || !Platform.isProcessAlive(pid!) {
+            pid = Platform.pid(ofBundleID: bundleID)
+        }
+        guard let process = pid, let frame = Platform.frontWindow(pid: process).frame else { return nil }
+        lock.lock()
+        cachedPID = process
         cachedFrame = frame
         cachedAt = now
         lock.unlock()
