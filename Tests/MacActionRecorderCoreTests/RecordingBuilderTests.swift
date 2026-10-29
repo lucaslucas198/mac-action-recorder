@@ -83,6 +83,33 @@ final class RecordingBuilderTests: XCTestCase {
         XCTAssertEqual(actions[0].clickCount, 2)
     }
 
+    func testATinyWobbleDuringAClickIsStillOneClick() {
+        let events = [
+            move(0.00, 40, 50),
+            down(0.10, 50, 50),
+            RawEvent(time: 0.13, x: 51, y: 51, kind: .mouseDrag(.left)),
+            RawEvent(time: 0.16, x: 52, y: 50, kind: .mouseDrag(.left)),
+            up(0.18, 52, 50)
+        ]
+        let actions = RecordingBuilder.build(events: events, options: options)
+        XCTAssertEqual(actions.map { $0.kind }, [.move, .click])
+        XCTAssertEqual(actions[1].x, 50)
+        XCTAssertEqual(actions[1].duration ?? 0, 0.08, accuracy: 0.0005)
+    }
+
+    func testMovingFurtherThanTheSlopWhileHoldingIsADrag() {
+        let events = [
+            down(0.00, 50, 50),
+            RawEvent(time: 0.05, x: 53, y: 50, kind: .mouseDrag(.left)),
+            RawEvent(time: 0.10, x: 70, y: 50, kind: .mouseDrag(.left)),
+            up(0.15, 70, 50)
+        ]
+        let kinds = RecordingBuilder.build(events: events, options: options).map { $0.kind }
+        XCTAssertEqual(kinds.first, .mouseDown)
+        XCTAssertEqual(kinds.last, .mouseUp)
+        XCTAssertFalse(kinds.contains(.click))
+    }
+
     func testTripleClickIsMerged() {
         let events = [
             down(0.00, 50, 50, count: 1), up(0.04, 50, 50, count: 1),

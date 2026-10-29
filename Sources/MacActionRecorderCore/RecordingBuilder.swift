@@ -160,11 +160,18 @@ public enum RecordingBuilder {
                 )
 
             case .mouseDown(let button, let downCount):
-                if index + 1 < events.count,
-                   case .mouseUp(let upButton, let upCount) = events[index + 1].kind,
+                // A hand rarely keeps the mouse perfectly still while clicking: drag events that
+                // stay within `clickSlop` of the press are part of the click, not a drag.
+                var next = index + 1
+                while next < events.count, case .mouseDrag(let dragButton) = events[next].kind, dragButton == button,
+                      hypot(events[next].x - event.x, events[next].y - event.y) <= clickSlop {
+                    next += 1
+                }
+                if next < events.count,
+                   case .mouseUp(let upButton, let upCount) = events[next].kind,
                    upButton == button,
-                   hypot(events[index + 1].x - event.x, events[index + 1].y - event.y) <= clickSlop {
-                    let up = events[index + 1]
+                   hypot(events[next].x - event.x, events[next].y - event.y) <= clickSlop {
+                    let up = events[next]
                     let count = max(1, max(downCount, upCount))
                     if count >= 2, let last = assembler.actions.last,
                        last.kind == .click, last.button == button,
@@ -183,7 +190,7 @@ public enum RecordingBuilder {
                     }
                     lastX = up.x
                     lastY = up.y
-                    index += 1 // the matching mouse-up has been consumed
+                    index = next // the small drags and the matching mouse-up have been consumed
                 } else {
                     assembler.append(
                         tagged(round2(.mouseDown(x: event.x, y: event.y, button: button), modifiers: event.modifiers), event),
