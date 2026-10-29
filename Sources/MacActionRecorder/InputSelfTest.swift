@@ -483,6 +483,10 @@ final class TimingPerformer: ActionPerformer {
         try inner.perform(action)
     }
 
+    func pressLead(for action: MacroAction) -> Double {
+        return inner.pressLead(for: action)
+    }
+
     func cleanup() {
         inner.cleanup()
     }

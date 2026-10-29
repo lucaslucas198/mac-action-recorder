@@ -141,18 +141,22 @@ final class MacEventPerformer: ActionPerformer {
         }
     }
 
-    /// Moves the pointer to `location` and, if it was somewhere else, waits `settle` seconds so the
-    /// app under it can show its hover state before a press. No wait when it is already there.
+    /// Moves the pointer to `location` and waits `settle` seconds so the app under it can show its
+    /// hover state before a press. The wait is always made, so the press comes exactly `settle`
+    /// after the step starts; the engine starts the step that much early (`pressLead`).
     private func moveCursorAndSettle(to location: CGPoint, settle: Double) throws {
-        let alreadyThere: Bool
-        if let current = Platform.pointerLocation() {
-            alreadyThere = hypot(current.x - location.x, current.y - location.y) < 0.5
-        } else {
-            alreadyThere = false
-        }
         try moveCursor(to: location)
-        if !alreadyThere && settle > 0 {
+        if settle > 0 {
             Thread.sleep(forTimeInterval: settle)
+        }
+    }
+
+    func pressLead(for action: MacroAction) -> Double {
+        switch action.kind {
+        case .click, .mouseDown:
+            return timing.settleBeforeClick
+        default:
+            return 0
         }
     }
 

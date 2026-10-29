@@ -15,6 +15,14 @@ public protocol ActionPerformer: AnyObject {
     /// Called once when a run ends for any reason (finish, stop, failure) so the performer
     /// can release anything still held, such as a pressed mouse button.
     func cleanup()
+    /// How long after being handed a click or button press the performer actually presses (it
+    /// first moves the pointer there and lets the app under it react). The engine hands the step
+    /// over that much earlier, so the press itself lands on the recorded timeline.
+    func pressLead(for action: MacroAction) -> Double
+}
+
+extension ActionPerformer {
+    public func pressLead(for action: MacroAction) -> Double { return 0 }
 }
 
 public struct PlaybackError: Error, LocalizedError, Equatable {
@@ -323,6 +331,11 @@ public final class PlaybackEngine {
                         // and where its window is), so the time they take does not make the step
                         // late; then wait out the rest.
                         var target = PlaybackSchedule.waitTarget(due: due, lastEnd: lastEnd, floor: floor)
+                        if action.kind == .click || action.kind == .mouseDown {
+                            // Never earlier than the end of the previous step.
+                            let lead = min(max(0, performer.pressLead(for: action)), PlaybackEngine.maxPressLead)
+                            target = max(lastEnd, target - lead)
+                        }
                         guard let pausedEarly = sleep(until: target - PlaybackSchedule.checkLead) else { return }
                         target += pausedEarly
 
@@ -486,6 +499,9 @@ public final class PlaybackEngine {
         }
         return .stop(reason)
     }
+
+    /// The most a press is handed over early (see `ActionPerformer.pressLead`).
+    static let maxPressLead = 0.3
 
     /// How often a problem is looked at again while waiting for it to clear up.
     static let graceStep = 0.025

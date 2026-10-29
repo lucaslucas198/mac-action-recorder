@@ -208,7 +208,7 @@ This app does not and cannot promise perfect replay.
 | Shift-click, Command-click | Records and replays the held modifier keys. |
 | Window moved | If the window has the same size, every click is shifted by the same amount. |
 | Window resized, app quit, display changed | The run stops with a message (Settings > Safety). It never guesses. |
-| Another app took focus, or covers a click's spot | Stops before that step (on by default: *Check that each step goes to the app it was recorded in*). Each step knows which app received it, so a macro may still click from one app into another. |
+| Another app took focus, or covers a click's spot | Stops before that step (on by default: *Check that each step goes to the app it was recorded in*). Each step knows which app received it, so a macro may still click from one app into another. A failed check is looked at again for up to 1 second first, because an app a click brings forward, or a menu it opens, can take a moment to appear (since 0.6.1). |
 | App not in front or closed at the start | Brings it to the front, and opens it if closed (Settings > Playback). |
 | Clicks shortened, typing at a different pace | Each click is held as long as it was recorded and text is typed at the recorded pace (since 0.6.0; Settings > Playback > *Match the recording*). |
 | Small delays adding up over a long macro | Every step is scheduled on the recorded timeline, so a late step is made up in the next gap (since 0.6.0). |

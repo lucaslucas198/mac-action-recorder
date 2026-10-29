@@ -125,6 +125,44 @@ final class TimelineFidelityTests: XCTestCase {
         return (performer, Date().timeIntervalSince(started))
     }
 
+    /// A performer that presses `lead` seconds after it is handed a click is handed it that much
+    /// earlier, so the press itself is on the timeline; other steps are not moved.
+    func testClicksAreHandedOverEarlyByThePerformersPressLead() {
+        final class LeadPerformer: ActionPerformer {
+            let lock = NSLock()
+            var times: [(ActionKind, Double)] = []
+            func perform(_ action: MacroAction) throws {
+                lock.lock()
+                times.append((action.kind, ProcessInfo.processInfo.systemUptime))
+                lock.unlock()
+            }
+            func cleanup() {}
+            func pressLead(for action: MacroAction) -> Double { action.kind == .click ? 0.05 : 0 }
+        }
+        let performer = LeadPerformer()
+        let engine = PlaybackEngine(performer: performer, frontmostBundleID: { nil })
+        let actions: [MacroAction] = [
+            .key(KeyCodes.returnKey, delay: 0),
+            .click(x: 1, y: 1, delay: 0.3),
+            .key(KeyCodes.returnKey, delay: 0.3)
+        ]
+        var config = PlaybackConfig()
+        config.countdown = 0
+        config.clickHoldAsRecorded = false
+        XCTAssertNoThrow(try engine.start(recording: Recording(name: "lead", actions: actions), config: config))
+        XCTAssertTrue(waitUntil(5) { engine.state == .finished })
+        performer.lock.lock()
+        let times = performer.times
+        performer.lock.unlock()
+        XCTAssertEqual(times.map { $0.0 }, [.key, .click, .key])
+        // Generous bounds: a test machine can wake late, never early.
+        let clickGap = times[1].1 - times[0].1
+        XCTAssertGreaterThanOrEqual(clickGap, 0.245)
+        XCTAssertLessThan(clickGap, 0.29, "the click is handed over about 0.05 s before its time")
+        let total = times[2].1 - times[0].1
+        XCTAssertGreaterThanOrEqual(total, 0.595, "the step after the click keeps its own time")
+    }
+
     func testShortHoldIsPassedToThePerformerScaled() {
         var click = MacroAction.click(x: 5, y: 6)
         click.duration = 0.08
