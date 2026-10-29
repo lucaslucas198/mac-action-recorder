@@ -244,9 +244,9 @@ final class EventRecorder {
                                app: app, window: window))
     }
 
-    /// The app whose window is on top where the pointer is (the one that receives a click there),
-    /// and that window's frame. Only normal apps count: a click on the Dock, the menu bar or a
-    /// helper's window is recorded without an app, so playback never checks it. `fresh: false`
+    /// The normal app whose window is under the pointer (the one that receives a click there) and
+    /// that window's frame. See-through windows of helpers on top are skipped; a click on the
+    /// Dock or the menu bar is recorded without an app, so playback never checks it. `fresh: false`
     /// lets frequent events (scrolling, dragging) reuse a window list up to 0.1 s old.
     private func receiver(at point: CGPoint, fresh: Bool) -> (app: String?, window: WindowFrame?) {
         let now = ProcessInfo.processInfo.systemUptime
@@ -254,11 +254,11 @@ final class EventRecorder {
             screenWindows = ScreenWindows.list()
             windowsReadAt = now
         }
-        guard let windows = screenWindows, let top = ScreenWindows.window(at: point, in: windows),
-              let info = AppDirectory.shared.info(for: top.pid), info.isRegular, let bundleID = info.bundleID else {
+        guard let windows = screenWindows, let hit = ScreenWindows.appWindow(at: point, in: windows),
+              let bundleID = hit.info.bundleID else {
             return (nil, nil)
         }
-        return (bundleID, top.frame)
+        return (bundleID, hit.window.frame)
     }
 
     /// The time of an event in seconds on the same clock as `systemUptime`.

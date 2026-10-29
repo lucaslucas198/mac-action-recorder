@@ -70,17 +70,23 @@ enum InputSelfTest {
         Platform.onMain { FrontmostTracker.shared.start() }
 
         // Another app in front, so the recorded click is the one that switches to TextEdit (the
-        // way a user clicks into Discord). Finder normally has no window open on the runner.
-        func bringFinderForward() {
-            guard let finder = Platform.onMain({ Platform.runningApplication(bundleID: "com.apple.finder") }) else { return }
-            Platform.onMain { Platform.activate(finder) }
+        // way a user clicks into Discord): this test app, with its own windows out of the way.
+        func bringOtherAppForward() {
+            Platform.onMain {
+                for window in NSApp.windows { window.orderOut(nil) }
+                NSApp.activate(ignoringOtherApps: true)
+            }
             Thread.sleep(forTimeInterval: 0.8)
         }
-        bringFinderForward()
-        let finderWindows = ScreenWindows.list().map { list in
-            ScreenWindows.windows(of: Platform.pid(ofBundleID: "com.apple.finder") ?? -1, in: list).filter { $0.width >= 100 }.count
-        } ?? -1
-        log("In front before recording: \(Platform.bundleIDOfFrontmostApp() ?? "unknown"); Finder windows on screen: \(finderWindows)")
+        bringOtherAppForward()
+        log("In front before recording: \(Platform.bundleIDOfFrontmostApp() ?? "unknown")")
+        if let list = ScreenWindows.list() {
+            let under = list.filter { $0.frame.contains(x: Double(target.x), y: Double(target.y)) }.prefix(4).map { window -> String in
+                let info = AppDirectory.shared.info(for: window.pid)
+                return "\(info?.bundleID ?? "pid \(window.pid)") layer \(window.layer) \(info?.isRegular == true ? "app" : "helper") \(Int(window.frame.width))×\(Int(window.frame.height))"
+            }
+            log("Windows under the click point, front to back: " + under.joined(separator: "; "))
+        }
 
         // 2. Record.
         let recorder = EventRecorder()
@@ -173,9 +179,9 @@ enum InputSelfTest {
         // Three runs at 1× (the machine's load varies from moment to moment) and one at 2×.
         var differences: [Double: [Double]] = [:]
         for speed in [1.0, 1.0, 1.0, 2.0] {
-            // Same situation as when recording: Finder in front, the first click goes to TextEdit.
+            // Same situation as when recording: another app in front, the first click goes to TextEdit.
             // The app's real step checks are on, so a wrong stop would fail this test.
-            bringFinderForward()
+            bringOtherAppForward()
             let performer = MacEventPerformer()
             let timing = TimingPerformer(performer)
             let safety = SafetyBox()

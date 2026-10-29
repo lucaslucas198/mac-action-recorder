@@ -44,6 +44,17 @@ enum ScreenWindows {
         return windows.first { $0.frame.contains(x: Double(point.x), y: Double(point.y)) }
     }
 
+    /// The window of a normal app (one with a Dock icon) that is on top at `point`, skipping the
+    /// see-through windows of helpers and menu bar tools that some Macs have on top of everything
+    /// (they let clicks through to the app below). This is the window a click there reaches.
+    static func appWindow(at point: CGPoint, in windows: [ScreenWindow]) -> (window: ScreenWindow, info: AppDirectory.Info)? {
+        for candidate in windows where candidate.frame.contains(x: Double(point.x), y: Double(point.y)) {
+            guard let info = AppDirectory.shared.info(for: candidate.pid) else { continue }
+            if info.isRegular { return (candidate, info) }
+        }
+        return nil
+    }
+
     /// The windows of one process.
     static func windows(of pid: pid_t, in windows: [ScreenWindow]) -> [WindowFrame] {
         return windows.filter { $0.pid == pid }.map { $0.frame }
@@ -110,12 +121,8 @@ final class AppDirectory {
         return bundleID.split(separator: ".").last.map(String.init) ?? bundleID
     }
 
-    /// The regular app whose window is on top at `point`, or nil when the window there belongs to
-    /// a background helper (or there is none).
+    /// The normal app whose window a click at `point` reaches (see `ScreenWindows.appWindow`).
     func regularApp(at point: CGPoint, in windows: [ScreenWindow]) -> String? {
-        guard let top = ScreenWindows.window(at: point, in: windows), let info = info(for: top.pid), info.isRegular else {
-            return nil
-        }
-        return info.bundleID
+        return ScreenWindows.appWindow(at: point, in: windows)?.info.bundleID
     }
 }

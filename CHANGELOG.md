@@ -13,7 +13,8 @@ Mac app. Fixes simple macros being stopped or played against the wrong app.
 - Settings wording: "Check that each step goes to the app it was recorded in" (Playback and Safety).
 - Macros recorded with 0.6.0 or earlier keep working with the old one-app check; if one switches apps, record it again. Their window check now also accepts the recorded window when another window of the same app is in front.
 - File format: actions may carry `app` and `window` (optional; older versions ignore them).
-- CI: the real input test now starts with Finder in front so the recorded click switches to TextEdit, and plays it back with the step checks on.
+- CI: the real input test now starts with another app in front so the recorded click switches to TextEdit, and plays it back with the step checks on.
+- See-through windows of helper tools on top of everything (some Macs have them) are skipped when working out which app a click reaches.
 
 ## 0.6.0
 
