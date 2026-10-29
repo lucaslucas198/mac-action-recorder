@@ -315,17 +315,27 @@ final class EventRecorder {
         }
     }
 
-    /// True when the event at `point` goes to one of this app's own windows (for example the Stop
-    /// button). Being inside the area of one of our windows is not enough: another app's window may
-    /// be in front of it there, and then the click belongs to that app and must be recorded.
+    /// True when the event at `point` goes to one of this app's own windows: the main window, the
+    /// menu bar item and its menu (for example Stop Recording). Being inside the area of one of our
+    /// windows is not enough: another app's window may be in front of it there, and then the click
+    /// belongs to that app and must be recorded.
     private func isInsideOwnWindow(_ point: CGPoint) -> Bool {
+        // The window on top at that point, as macOS lists it; menus and the menu bar item are
+        // windows of this process too.
         let now = ProcessInfo.processInfo.systemUptime
+        if screenWindows == nil || now - windowsReadAt > 0.05 {
+            screenWindows = ScreenWindows.list()
+            windowsReadAt = now
+        }
+        if let windows = screenWindows, let top = ScreenWindows.window(at: point, in: windows) {
+            return top.pid == ProcessInfo.processInfo.processIdentifier
+        }
+        // The list could not be read: fall back to this app's own window list.
         if now - framesCachedAt > 0.25 {
             cachedFrames = Platform.ownWindowFrames()
             framesCachedAt = now
         }
         guard cachedFrames.contains(where: { $0.contains(point) }) else { return false }
-        // Which window is really in front at this point (Cocoa coordinates, origin bottom-left)?
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let cocoaPoint = NSPoint(x: point.x, y: primaryHeight - point.y)
         let number = NSWindow.windowNumber(at: cocoaPoint, belowWindowWithWindowNumber: 0)
