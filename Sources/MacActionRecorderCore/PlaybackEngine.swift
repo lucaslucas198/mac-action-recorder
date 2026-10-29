@@ -268,11 +268,10 @@ public final class PlaybackEngine {
         while true {
             emit(run, .iterationStarted(iteration: iteration, total: total))
 
-            if let required = config.requiredBundleID, frontmostBundleID() != required {
-                fail(run, foregroundMessage(config))
-                return
-            }
-            if let reason = safetyCheck(nil) {
+            switch passChecks(nil, run: run, config: config) {
+            case .go: break
+            case .cancelled: return
+            case .stop(let reason):
                 fail(run, reason)
                 return
             }
@@ -327,11 +326,10 @@ public final class PlaybackEngine {
                         guard let pausedEarly = sleep(until: target - PlaybackSchedule.checkLead) else { return }
                         target += pausedEarly
 
-                        if let required = config.requiredBundleID, frontmostBundleID() != required {
-                            fail(run, foregroundMessage(config))
-                            return
-                        }
-                        if let reason = safetyCheck(action) {
+                        switch passChecks(action, run: run, config: config) {
+                        case .go: break
+                        case .cancelled: return
+                        case .stop(let reason):
                             fail(run, reason)
                             return
                         }
@@ -457,6 +455,40 @@ public final class PlaybackEngine {
         }
         return true
     }
+
+    enum Gate: Equatable {
+        case go
+        case stop(String)
+        case cancelled
+    }
+
+    /// The checks before a step (or, with `action == nil`, before a repetition). A problem that
+    /// clears up within `config.safetyGrace` seconds is waited out instead of stopping the run:
+    /// an app that a click has just brought forward can take a moment to become the app in
+    /// front, and a menu or dialog a click has just opened a moment to appear. A problem still
+    /// there after that stops the run. Stop and Pause work during the wait; paused time does not
+    /// count towards it.
+    private func passChecks(_ action: MacroAction?, run: Run, config: PlaybackConfig) -> Gate {
+        func problem() -> String? {
+            if let required = config.requiredBundleID, frontmostBundleID() != required {
+                return foregroundMessage(config)
+            }
+            return safetyCheck(action)
+        }
+        guard var reason = problem() else { return .go }
+        let step = PlaybackEngine.graceStep
+        var waited = 0.0
+        while waited < config.safetyGrace {
+            if !run.sleep(step) { return .cancelled }
+            waited += step
+            guard let again = problem() else { return .go }
+            reason = again
+        }
+        return .stop(reason)
+    }
+
+    /// How often a problem is looked at again while waiting for it to clear up.
+    static let graceStep = 0.025
 
     private func foregroundMessage(_ config: PlaybackConfig) -> String {
         let name = config.requiredAppName ?? config.requiredBundleID ?? "the target app"

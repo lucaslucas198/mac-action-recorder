@@ -30,6 +30,9 @@ public struct PlaybackConfig: Equatable {
     public var clickHoldAsRecorded = true
     /// Type recorded text at the pace it was typed (scaled by speed) instead of `typingCharDelay`.
     public var typingAsRecorded = true
+    /// How long a failed safety check is re-checked before the run stops, in seconds. Covers an
+    /// app still coming to the front after a click, or a menu or dialog still opening. 0 stops at once.
+    public var safetyGrace: Double = 1.0
 
     public init() {}
 }

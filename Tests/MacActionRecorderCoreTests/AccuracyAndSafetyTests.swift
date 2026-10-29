@@ -244,7 +244,9 @@ final class AccuracyAndSafetyTests: XCTestCase {
             .click(x: 1, y: 0, delay: 0.001), .click(x: 2, y: 0, delay: 0.001), .click(x: 3, y: 0, delay: 0.001)
         ])
         var clicks = 0
-        let result = try runToEnd(recording) { action in
+        var config = PlaybackConfig()
+        config.safetyGrace = 0
+        let result = try runToEnd(recording, config: config) { action in
             guard action?.kind == .click else { return nil }
             clicks += 1
             return clicks == 2 ? SafetyWatchdog.messagePrefix + "window gone" : nil
@@ -252,6 +254,66 @@ final class AccuracyAndSafetyTests: XCTestCase {
         XCTAssertEqual(result.performer.performed.map { $0.x }, [1], "the second click must never be sent")
         XCTAssertEqual(result.state, .failed(SafetyWatchdog.messagePrefix + "window gone"))
         XCTAssertEqual(result.performer.cleanupCount, 1)
+    }
+
+    func testAProblemThatClearsUpWithinTheGraceIsWaitedOut() throws {
+        // Like an app that a click brings forward but that takes a moment to be the app in front.
+        let recording = Recording(name: "g", actions: [
+            .click(x: 1, y: 0, delay: 0.001), .text("hi", delay: 0.001), .click(x: 3, y: 0, delay: 0.001)
+        ])
+        let lock = NSLock()
+        var textChecks = 0
+        var config = PlaybackConfig()
+        config.safetyGrace = 1.0
+        let started = ProcessInfo.processInfo.systemUptime
+        let result = try runToEnd(recording, config: config) { action in
+            guard action?.kind == .text else { return nil }
+            lock.lock()
+            defer { lock.unlock() }
+            textChecks += 1
+            return textChecks <= 4 ? SafetyWatchdog.messagePrefix + "not in front yet" : nil
+        }
+        let took = ProcessInfo.processInfo.systemUptime - started
+        XCTAssertEqual(result.state, .finished)
+        XCTAssertEqual(result.performer.performed.filter { $0.kind == .click }.count, 2)
+        XCTAssertEqual(textChecks, 5, "the check is repeated until it passes, then not again")
+        XCTAssertLessThan(took, 0.9, "only as long as the problem lasts is waited, not the whole grace")
+    }
+
+    func testAProblemThatLastsStopsAfterTheGraceWithoutSendingTheStep() throws {
+        let recording = Recording(name: "g", actions: [.click(x: 1, y: 0, delay: 0.001), .click(x: 2, y: 0, delay: 0.001)])
+        var config = PlaybackConfig()
+        config.safetyGrace = 0.3
+        var clickChecks = 0
+        let started = ProcessInfo.processInfo.systemUptime
+        let result = try runToEnd(recording, config: config) { action in
+            guard action?.kind == .click else { return nil }
+            clickChecks += 1
+            return clickChecks >= 2 ? SafetyWatchdog.messagePrefix + "window gone" : nil
+        }
+        let took = ProcessInfo.processInfo.systemUptime - started
+        XCTAssertEqual(result.performer.performed.map { $0.x }, [1])
+        XCTAssertEqual(result.state, .failed(SafetyWatchdog.messagePrefix + "window gone"))
+        XCTAssertGreaterThanOrEqual(took, 0.28)
+        XCTAssertGreaterThan(clickChecks, 3, "it was looked at again during the grace")
+    }
+
+    func testStopDuringTheGraceEndsTheRunAtOnce() throws {
+        let recording = Recording(name: "g", actions: [.click(x: 1, y: 0, delay: 0.001)])
+        let performer = TestPerformer()
+        let engine = PlaybackEngine(performer: performer, safetyCheck: { action in
+            action == nil ? nil : SafetyWatchdog.messagePrefix + "never clears"
+        })
+        var config = PlaybackConfig()
+        config.countdown = 0
+        config.safetyGrace = 30
+        try engine.start(recording: recording, config: config)
+        Thread.sleep(forTimeInterval: 0.15)
+        let stopAt = ProcessInfo.processInfo.systemUptime
+        engine.stop()
+        XCTAssertTrue(waitUntil(2) { !engine.state.isActive })
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - stopAt, 0.5)
+        XCTAssertEqual(performer.performed.count, 0)
     }
 
     func testSafetyIsAskedAtTheStartOfEveryRepetitionAndNotForMouseMoves() throws {
