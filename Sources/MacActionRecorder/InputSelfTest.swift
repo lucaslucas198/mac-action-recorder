@@ -79,7 +79,7 @@ enum InputSelfTest {
             // This test app's own windows must not be under the clicks.
             Platform.onMain { for window in NSApp.windows { window.orderOut(nil) } }
             if let titleBar = calculator?.titleBar, titleBar.x >= 0 {
-                postClick(at: titleBar)
+                _ = postClick(at: titleBar)
             }
             Thread.sleep(forTimeInterval: 0.8)
         }
@@ -181,12 +181,25 @@ enum InputSelfTest {
         var recording = Recording(name: "selftest", targetApp: output.targetApp, recordedScreen: Platform.primaryDisplaySize(), targetWindow: output.targetWindow, actions: actions)
         recording.actions = actions
         let recordedSpan = recording.originalDuration
-        // Three runs at 1× (the machine's load varies from moment to moment) and one at 2×.
+        // Three runs at 1× (the machine's load varies from moment to moment) and one at 2× with
+        // TextEdit in front: these measure the app's own timing. Then one run in the same situation
+        // as when recording, with another app in front so the first click switches to TextEdit:
+        // how long macOS takes to switch apps is not the app's timing, so that run is checked for
+        // finishing with the step checks on and typing the right text, and its timing is only shown.
+        // The app's real step checks are on in every run, so a wrong stop would fail this test.
         var differences: [Double: [Double]] = [:]
-        for speed in [1.0, 1.0, 1.0, 2.0] {
-            // Same situation as when recording: another app in front, the first click goes to TextEdit.
-            // The app's real step checks are on, so a wrong stop would fail this test.
-            bringOtherAppForward()
+        let runs: [(speed: Double, switching: Bool)] = [(1, false), (1, false), (1, false), (2, false), (1, true)]
+        for (speed, switching) in runs {
+            if switching {
+                bringOtherAppForward()
+            } else {
+                // A click on TextEdit's title bar makes it the app in front (macOS may refuse an
+                // activation asked for by a background process) without moving the text cursor.
+                Platform.onMain { for window in NSApp.windows { window.orderOut(nil) } }
+                _ = postClick(at: CGPoint(x: frame.x + frame.width * 0.5, y: frame.y + 12))
+                Thread.sleep(forTimeInterval: 0.8)
+            }
+            log("Run at \(Int(speed))×, \(switching ? "another app in front (the click switches to TextEdit)" : "TextEdit in front"); in front now: \(Platform.onMain { NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?" })")
             let performer = MacEventPerformer()
             let timing = TimingPerformer(performer)
             let safety = SafetyBox()
@@ -222,10 +235,10 @@ enum InputSelfTest {
             }
             let took = Date().timeIntervalSince(started)
             log(String(format: "Playback at %.0f×: %@ in %.3f s (recorded length %.3f s, so about %.3f s expected)", speed, String(describing: state), took, recordedSpan, recordedSpan / speed))
-            check(state == .finished, "playback at \(Int(speed))× finished with the step checks on")
+            check(state == .finished, "playback at \(Int(speed))×\(switching ? " with another app in front" : "") finished with the step checks on")
             Thread.sleep(forTimeInterval: 0.3)
             let seen = probe.stop()
-            if let worst = measurePlayback(seen: seen, actions: actions, speed: speed) {
+            if let worst = measurePlayback(seen: seen, actions: actions, speed: speed), !switching {
                 differences[speed, default: []].append(worst)
             }
             // When the engine handed each step to macOS, to tell the app's timing apart from how
@@ -246,7 +259,7 @@ enum InputSelfTest {
 
         let after = documentText(of: app) ?? ""
         log("Document after playback: \(after.debugDescription)")
-        check(after.lowercased() == String(repeating: "hello\n", count: 5), "every playback typed the same text into the same document")
+        check(after.lowercased() == String(repeating: "hello\n", count: 1 + runs.count), "every playback typed the same text into the same document")
         for speed in differences.keys.sorted() {
             let values = (differences[speed] ?? []).sorted()
             guard !values.isEmpty else { continue }
