@@ -70,12 +70,12 @@ enum InputSelfTest {
         Platform.onMain { FrontmostTracker.shared.start() }
 
         // Another app in front, so the recorded click is the one that switches to TextEdit (the
-        // way a user clicks into Discord): this test app, with its own windows out of the way.
+        // way a user clicks into Discord). A click on an empty part of the desktop makes Finder the
+        // active app without opening a Finder window. (Activating an app from a background
+        // process is refused by macOS.)
+        let desktopSpot = CGPoint(x: frame.x + frame.width + 60, y: frame.y + frame.height + 60)
         func bringOtherAppForward() {
-            Platform.onMain {
-                for window in NSApp.windows { window.orderOut(nil) }
-                NSApp.activate(ignoringOtherApps: true)
-            }
+            postClick(at: desktopSpot)
             Thread.sleep(forTimeInterval: 0.8)
         }
         bringOtherAppForward()
