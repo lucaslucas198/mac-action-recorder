@@ -282,6 +282,9 @@ jobs:
           status=$?
           echo "Exit status: $status" >> mac-shots/input-selftest-output.txt
           cat mac-shots/input-selftest-output.txt
+          # The key lines as one annotation, readable through the API without the full log.
+          summary="$(grep -E '^(PASS|FAIL)|In front|Playback at|FAILED|ALL PASSED|Exit status' mac-shots/input-selftest-output.txt | head -60 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}')"
+          echo "::notice title=Input self-test::$summary"
           exit $status
 
       - name: Setup end-to-end (open from the disk image, install, reopen, tidy up)
@@ -330,8 +333,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Mac UI screenshots from CI run ${{ github.run_id }} (${{ github.sha }})"
-          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots-mac
+          git commit -q -m "Mac UI screenshots from CI run ${{ github.run_id }} (${{ github.sha }})" || { echo "::warning title=Publishing screenshots::git commit failed"; exit 1; }
+          du -sh . || true
+          for attempt in 1 2 3; do
+            if git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots-mac 2> "$RUNNER_TEMP/push-error.txt"; then exit 0; fi
+            echo "::warning title=Publishing screenshots::push attempt $attempt failed: $(tr '\n' ' ' < "$RUNNER_TEMP/push-error.txt" | cut -c1-400)"
+            sleep 5
+          done
+          exit 1
 
 
       - uses: actions/upload-artifact@v4
