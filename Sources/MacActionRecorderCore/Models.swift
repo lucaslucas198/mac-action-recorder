@@ -87,6 +87,14 @@ public struct MacroAction: Codable, Identifiable, Equatable {
     /// playback settings instead. Seconds at 1x.
     public var duration: Double?
 
+    /// The app that received this input when it was recorded (bundle ID): for a mouse action the
+    /// app whose window was under the pointer, for a key or text the app in front. Playback uses it
+    /// to check, step by step, that the input still goes to the same app.
+    public var app: String?
+    /// For a mouse action, the window under the pointer when recorded (its frame), so playback can
+    /// follow that window if it moved and notice when it is not there any more.
+    public var window: WindowFrame?
+
     public init(
         id: UUID = UUID(),
         kind: ActionKind,
@@ -132,6 +140,9 @@ public struct MacroAction: Codable, Identifiable, Equatable {
         self.modifiers = try c.decodeIfPresent(KeyModifiers.self, forKey: .modifiers)
         self.text = try c.decodeIfPresent(String.self, forKey: .text)
         self.duration = try c.decodeIfPresent(Double.self, forKey: .duration)
+        self.app = try? c.decodeIfPresent(String.self, forKey: .app)
+        let frame = try? c.decodeIfPresent(WindowFrame.self, forKey: .window)
+        self.window = (frame?.isUsable == true) ? frame : nil
     }
 }
 
@@ -289,6 +300,12 @@ public struct Recording: Codable, Identifiable, Equatable {
         self.targetWindow = targetWindow
         self.startChannel = startChannel
         self.actions = actions
+    }
+
+    /// True when the steps know which app received them (recorded with 0.6.1 or later), so
+    /// playback can check each step against its own app and window.
+    public var hasStepInfo: Bool {
+        return actions.contains { $0.app != nil }
     }
 
     /// Total recorded time at 1x: all delays, explicit waits, and the recorded time clicks were

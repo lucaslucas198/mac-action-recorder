@@ -275,8 +275,8 @@ struct PlaybackSettingsTab: View {
             Section("While it runs") {
                 Toggle("Follow the app's window if it moved", isOn: $model.settings.followTargetWindow)
                 Hint("If the window is the same size as when recorded but in a different place, every click is shifted by the same amount. It needs a window reference, which new recordings save automatically (or use “Use current position” in the macro's “App and Discord” section).")
-                Toggle("Only play while the recorded app is in front", isOn: $model.settings.verifyForeground)
-                Hint("Before each click or key press, playback checks that the app the macro was recorded against (for example Discord) is frontmost and stops with an error if it is not.")
+                Toggle("Check that each step goes to the app it was recorded in", isOn: $model.settings.verifyForeground)
+                Hint("Before each key press or text, the app that received it when recording (for example Discord) must be in front; before each click, the spot must not be covered by another app. A click that switches to another app, as when you click into Discord, is fine. Macros recorded with versions before 0.6.1 only know one app and need it in front the whole time.")
                 Toggle("Put the mouse pointer back where it was afterwards", isOn: $model.settings.restorePointerAfterPlayback)
             }
 
@@ -331,7 +331,7 @@ struct SafetySettingsTab: View {
 
             Section("Stop when…") {
                 Toggle("The app has quit", isOn: $model.settings.safety.stopIfTargetGone)
-                Toggle("The app's window changed size, or has no window", isOn: $model.settings.safety.stopIfWindowChanged)
+                Toggle("The window a click was recorded in is gone, resized, or covered by another app", isOn: $model.settings.safety.stopIfWindowChanged)
                 Toggle("The display size changed", isOn: $model.settings.safety.stopIfDisplayChanged)
                 Toggle("Something else moved the mouse during the run", isOn: $model.settings.safety.stopIfUserMovesMouse)
                 Hint("The last one stops the macro if you grab the mouse yourself. It is off by default because a mouse that is nudged by accident would end a long run.")
@@ -339,8 +339,8 @@ struct SafetySettingsTab: View {
             .disabled(!model.settings.safety.enabled)
 
             Section("Also") {
-                Toggle("Only play while the recorded app is in front", isOn: $model.settings.verifyForeground)
-                Hint("This is a separate check and is on by default. It stops the run the moment another app takes focus.")
+                Toggle("Check that each step goes to the app it was recorded in", isOn: $model.settings.verifyForeground)
+                Hint("This is a separate check and is on by default. Keys and text stop if another app is in front; a click stops if another app's window covers its spot.")
             }
 
             Section("What this cannot do") {

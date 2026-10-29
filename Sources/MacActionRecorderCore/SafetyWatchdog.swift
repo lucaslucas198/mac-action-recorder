@@ -126,3 +126,117 @@ public enum SafetyWatchdog {
         return nil
     }
 }
+
+// MARK: - Step by step (recordings made with 0.6.1 and later)
+
+/// What is on screen for one step, read just before it. `nil` means "could not be read", and a
+/// value that could not be read never causes a stop.
+public struct StepSnapshot: Equatable {
+    /// Bundle ID of the app in front.
+    public var frontmost: String?
+    /// Whether the step's app is running.
+    public var appRunning: Bool?
+    /// The step's app's windows on screen (front to back), or nil if the list could not be read.
+    public var appWindows: [WindowFrame]?
+    /// The regular app (one with a Dock icon) whose window is on top at the step's point, if any.
+    /// Helper windows of background tools are not counted, so they can never cause a stop.
+    public var regularAppAtPoint: String?
+    public var screen: ScreenSize?
+    public var pointerDrift: Double?
+
+    public init(
+        frontmost: String? = nil,
+        appRunning: Bool? = nil,
+        appWindows: [WindowFrame]? = nil,
+        regularAppAtPoint: String? = nil,
+        screen: ScreenSize? = nil,
+        pointerDrift: Double? = nil
+    ) {
+        self.frontmost = frontmost
+        self.appRunning = appRunning
+        self.appWindows = appWindows
+        self.regularAppAtPoint = regularAppAtPoint
+        self.screen = screen
+        self.pointerDrift = pointerDrift
+    }
+}
+
+extension SafetyWatchdog {
+    /// The window among `windows` that is the one recorded as `recorded`: the same size (within
+    /// 2 points), and of those the one nearest to where it was. Nil when none has that size.
+    public static func matchingWindow(_ recorded: WindowFrame, in windows: [WindowFrame]) -> WindowFrame? {
+        let sameSize = windows.filter { $0.hasSameSize(as: recorded) }
+        return sameSize.min { a, b in
+            hypot(a.x - recorded.x, a.y - recorded.y) < hypot(b.x - recorded.x, b.y - recorded.y)
+        }
+    }
+
+    /// Checks one step that knows which app received it when recorded (`action.app`). Each rule
+    /// fires only on something certain:
+    /// - the app has quit;
+    /// - a key or text would go to another app (when `verifyForeground` is on);
+    /// - the window a click was recorded in is not on screen at that size any more, or moved while
+    ///   "follow the window" is off;
+    /// - the spot of a click is covered by another app's window (so the click would go there);
+    /// - the display size changed (only when there is no window to go by);
+    /// - something else moved the pointer (optional).
+    /// `names` turns a bundle ID into a readable app name for the message.
+    public static func evaluate(
+        step action: MacroAction,
+        options: SafetyOptions,
+        verifyForeground: Bool,
+        followWindow: Bool,
+        recordedScreen: ScreenSize?,
+        snapshot: StepSnapshot,
+        names: (String) -> String
+    ) -> String? {
+        guard let app = action.app else { return nil }
+        let name = names(app)
+        let positional = WindowRelocation.isPositional(action.kind) && action.x != nil && action.y != nil
+        // Window and "covered" checks only where the pointer arrives on purpose: a click, the
+        // press that starts a drag, a scroll. During a drag and at its release, macOS may show
+        // its own drag picture under the pointer, so those are not checked.
+        let aimed = positional && (action.kind == .click || action.kind == .mouseDown || action.kind == .scroll)
+
+        if options.enabled, options.stopIfTargetGone, snapshot.appRunning == false {
+            return messagePrefix + "\(name) is not running any more."
+        }
+
+        if verifyForeground, action.kind == .key || action.kind == .text,
+           let front = snapshot.frontmost, front != app {
+            return messagePrefix + "This step types into \(name), but \(names(front)) is in front now, so the keys would go there."
+        }
+
+        var windowOK = false
+        if options.enabled, options.stopIfWindowChanged, aimed, let recorded = action.window, let windows = snapshot.appWindows {
+            if windows.isEmpty {
+                return messagePrefix + "\(name) has no window on screen (it was closed, minimized or is on another desktop)."
+            }
+            guard let match = matchingWindow(recorded, in: windows) else {
+                return messagePrefix + "The \(name) window this step clicks in (\(Int(recorded.width))×\(Int(recorded.height)) when recorded) is not on screen at that size, so the recorded position would not line up."
+            }
+            let dx = match.x - recorded.x
+            let dy = match.y - recorded.y
+            if (abs(dx) > 1 || abs(dy) > 1) && !followWindow {
+                return messagePrefix + "The \(name) window moved (by \(Int(dx)), \(Int(dy)) points), and \"follow the window\" is off, so the click would land in the wrong place."
+            }
+            windowOK = true
+        }
+
+        if aimed, verifyForeground || (options.enabled && options.stopIfWindowChanged),
+           let other = snapshot.regularAppAtPoint, other != app {
+            return messagePrefix + "The spot this step clicks is covered by \(names(other)), so the click would go to \(names(other)) instead of \(name)."
+        }
+
+        if options.enabled, options.stopIfDisplayChanged, positional, !windowOK,
+           let recorded = recordedScreen, let now = snapshot.screen,
+           abs(recorded.width - now.width) > 1 || abs(recorded.height - now.height) > 1 {
+            return messagePrefix + "The main display changed from \(Int(recorded.width))×\(Int(recorded.height)) to \(Int(now.width))×\(Int(now.height)), so recorded positions may be wrong."
+        }
+
+        if options.enabled, options.stopIfUserMovesMouse, let drift = snapshot.pointerDrift, drift > driftThreshold {
+            return messagePrefix + "The mouse pointer was moved by something other than the macro."
+        }
+        return nil
+    }
+}

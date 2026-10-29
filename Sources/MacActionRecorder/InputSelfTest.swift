@@ -69,6 +69,19 @@ enum InputSelfTest {
         // As in the app: playback reads the frontmost app without waiting for the main thread.
         Platform.onMain { FrontmostTracker.shared.start() }
 
+        // Another app in front, so the recorded click is the one that switches to TextEdit (the
+        // way a user clicks into Discord). Finder normally has no window open on the runner.
+        func bringFinderForward() {
+            guard let finder = Platform.onMain({ Platform.runningApplication(bundleID: "com.apple.finder") }) else { return }
+            Platform.onMain { Platform.activate(finder) }
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        bringFinderForward()
+        let finderWindows = ScreenWindows.list().map { list in
+            ScreenWindows.windows(of: Platform.pid(ofBundleID: "com.apple.finder") ?? -1, in: list).filter { $0.width >= 100 }.count
+        } ?? -1
+        log("In front before recording: \(Platform.bundleIDOfFrontmostApp() ?? "unknown"); Finder windows on screen: \(finderWindows)")
+
         // 2. Record.
         let recorder = EventRecorder()
         var options = RecordingOptions()
@@ -125,7 +138,11 @@ enum InputSelfTest {
         let typed = actions.filter { $0.kind == .text }.compactMap { $0.text }.joined()
         check(typed == "hello", "the typed word was recorded as text (got \"\(typed)\")")
         check(actions.contains { $0.kind == .key && $0.keyCode == 36 }, "Return was recorded as a key press")
-        check(output.targetApp?.bundleID == "com.apple.TextEdit", "TextEdit was recorded as the target app")
+        check(output.targetApp?.bundleID == "com.apple.TextEdit", "TextEdit (the app that was clicked, not the one in front) was recorded as the target app")
+        let clickStep = actions.first { $0.kind == .click }
+        check(clickStep?.app == "com.apple.TextEdit", "the click knows it went to TextEdit (got \(clickStep?.app ?? "nothing"))")
+        check(clickStep?.window != nil, "the click knows which TextEdit window it was in")
+        check(actions.filter { $0.kind == .text || $0.kind == .key }.allSatisfy { $0.app == "com.apple.TextEdit" }, "the typing knows it went to TextEdit")
         check(output.targetWindow != nil, "the TextEdit window position was saved")
 
         // Recording accuracy: when the first letter and Return happened after the click press, as
@@ -156,13 +173,26 @@ enum InputSelfTest {
         // Three runs at 1× (the machine's load varies from moment to moment) and one at 2×.
         var differences: [Double: [Double]] = [:]
         for speed in [1.0, 1.0, 1.0, 2.0] {
-            Platform.onMain { Platform.activate(app) }
-            Thread.sleep(forTimeInterval: 0.8)
-            let timing = TimingPerformer(MacEventPerformer())
-            let engine = PlaybackEngine(performer: timing, frontmostBundleID: { Platform.bundleIDOfFrontmostApp() })
+            // Same situation as when recording: Finder in front, the first click goes to TextEdit.
+            // The app's real step checks are on, so a wrong stop would fail this test.
+            bringFinderForward()
+            let performer = MacEventPerformer()
+            let timing = TimingPerformer(performer)
+            let safety = SafetyBox()
+            safety.arm(
+                options: SafetyOptions(),
+                context: SafetyContext(target: recording.targetApp, recordedWindow: recording.targetWindow,
+                                       recordedScreen: recording.recordedScreen, followWindow: true),
+                verifyForeground: true,
+                stepInfo: recording.hasStepInfo
+            )
+            let engine = PlaybackEngine(
+                performer: timing,
+                frontmostBundleID: { Platform.bundleIDOfFrontmostApp() },
+                safetyCheck: { safety.check(action: $0, performer: performer) }
+            )
             var config = PlaybackConfig()
             config.speed = speed
-            config.requiredBundleID = "com.apple.TextEdit"
             let probe = PlaybackProbe()
             probe.start()
             let started = Date()
@@ -181,7 +211,7 @@ enum InputSelfTest {
             }
             let took = Date().timeIntervalSince(started)
             log(String(format: "Playback at %.0f×: %@ in %.3f s (recorded length %.3f s, so about %.3f s expected)", speed, String(describing: state), took, recordedSpan, recordedSpan / speed))
-            check(state == .finished, "playback at \(Int(speed))× finished")
+            check(state == .finished, "playback at \(Int(speed))× finished with the step checks on")
             Thread.sleep(forTimeInterval: 0.3)
             let seen = probe.stop()
             if let worst = measurePlayback(seen: seen, actions: actions, speed: speed) {

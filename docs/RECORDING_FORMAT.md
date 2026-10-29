@@ -71,6 +71,8 @@ Field notes:
 - `x`, `y`: points in the global coordinate space, origin at the top-left of the main display.
 - `button`: `"left"`, `"right"` or `"other"` (middle).
 - `keyCode`: a macOS virtual key code (for example 36 = Return, 49 = Space, 40 = K).
+- `app` (app 0.6.1 and later, optional): bundle ID of the app that received the step when recorded: for mouse steps the app whose window was under the pointer, for keys and text the app in front. Only normal apps (with a Dock icon) are recorded.
+- `window` (app 0.6.1 and later, optional, mouse steps): `{ "x", "y", "width", "height" }` of the window under the pointer when recorded. Playback finds that window again (same app, same size) to follow it if it moved, and stops if it is gone or another app's window covers the spot.
 - `modifiers`: array of any of `"control"`, `"option"`, `"shift"`, `"command"`.
   On `click`, `mouseDown`, `mouseUp`, `drag` and `scroll` actions it lists the keys held during the action (for example Shift-click). It is omitted when no key was held. Added in app version 0.5.0.
 

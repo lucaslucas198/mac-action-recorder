@@ -62,6 +62,8 @@ final class EventRecorder {
 
     private var cachedFrames: [CGRect] = []
     private var framesCachedAt: Double = 0
+    private var screenWindows: [ScreenWindow]?
+    private var windowsReadAt: Double = 0
     /// Keeps macOS from putting the app into App Nap while it records in the background, which
     /// would delay reading events (and can make macOS switch the event tap off).
     private var activity: NSObjectProtocol?
@@ -89,6 +91,8 @@ final class EventRecorder {
         truncated = false
         cachedFrames = []
         framesCachedAt = 0
+        screenWindows = nil
+        windowsReadAt = 0
 
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             if let refcon = refcon {
@@ -180,18 +184,25 @@ final class EventRecorder {
             case .otherMouseDragged: kind = .mouseDrag(.other)
             default: kind = .mouseMove
             }
-            append(time, location, kind, modifiers: held)
+            if type == .mouseMoved {
+                append(time, location, kind, modifiers: held)
+            } else {
+                let target = receiver(at: location, fresh: false)
+                append(time, location, kind, modifiers: held, app: target.app, window: target.window)
+            }
 
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             if isInsideOwnWindow(location) { return }
-            noteTargetApp()
+            let target = receiver(at: location, fresh: true)
+            noteTargetApp(target.app)
             let count = max(1, Int(event.getIntegerValueField(.mouseEventClickState)))
-            append(time, location, .mouseDown(button(for: type), clickCount: count), modifiers: held)
+            append(time, location, .mouseDown(button(for: type), clickCount: count), modifiers: held, app: target.app, window: target.window)
 
         case .leftMouseUp, .rightMouseUp, .otherMouseUp:
             if isInsideOwnWindow(location) { return }
+            let target = receiver(at: location, fresh: true)
             let count = max(1, Int(event.getIntegerValueField(.mouseEventClickState)))
-            append(time, location, .mouseUp(button(for: type), clickCount: count), modifiers: held)
+            append(time, location, .mouseUp(button(for: type), clickCount: count), modifiers: held, app: target.app, window: target.window)
 
         case .scrollWheel:
             guard options.recordScroll else { return }
@@ -199,7 +210,8 @@ final class EventRecorder {
             let dy = Int(event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1))
             let dx = Int(event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2))
             if dx == 0 && dy == 0 { return }
-            append(time, location, .scroll(dx: dx, dy: dy), modifiers: held)
+            let target = receiver(at: location, fresh: false)
+            append(time, location, .scroll(dx: dx, dy: dy), modifiers: held, app: target.app, window: target.window)
 
         case .keyDown:
             // Typing into this app's own windows (renaming a macro, settings) is not part of the macro.
@@ -213,18 +225,40 @@ final class EventRecorder {
             let modifiers = EventTapSupport.modifiers(from: event.flags)
             if ignoredHotKey.matches(keyCode: code, modifiers: modifiers) { return }
             if let other = otherIgnoredHotKey, other.matches(keyCode: code, modifiers: modifiers) { return }
-            noteTargetApp()
+            // Keys go to the app in front.
+            let front = NSWorkspace.shared.frontmostApplication
+            let frontApp = front?.activationPolicy == .regular ? front?.bundleIdentifier : nil
+            noteTargetApp(frontApp)
             let characters = NSEvent(cgEvent: event)?.characters ?? ""
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-            append(time, location, .keyDown(keyCode: code, modifiers: modifiers, characters: characters, isRepeat: isRepeat))
+            append(time, location, .keyDown(keyCode: code, modifiers: modifiers, characters: characters, isRepeat: isRepeat), app: frontApp)
 
         default:
             break
         }
     }
 
-    private func append(_ time: Double, _ location: CGPoint, _ kind: RawEventKind, modifiers: KeyModifiers = []) {
-        events.append(RawEvent(time: time, x: Double(location.x), y: Double(location.y), kind: kind, modifiers: modifiers))
+    private func append(_ time: Double, _ location: CGPoint, _ kind: RawEventKind, modifiers: KeyModifiers = [],
+                        app: String? = nil, window: WindowFrame? = nil) {
+        events.append(RawEvent(time: time, x: Double(location.x), y: Double(location.y), kind: kind, modifiers: modifiers,
+                               app: app, window: window))
+    }
+
+    /// The app whose window is on top where the pointer is (the one that receives a click there),
+    /// and that window's frame. Only normal apps count: a click on the Dock, the menu bar or a
+    /// helper's window is recorded without an app, so playback never checks it. `fresh: false`
+    /// lets frequent events (scrolling, dragging) reuse a window list up to 0.1 s old.
+    private func receiver(at point: CGPoint, fresh: Bool) -> (app: String?, window: WindowFrame?) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if fresh || windowsReadAt == 0 || now - windowsReadAt > 0.1 {
+            screenWindows = ScreenWindows.list()
+            windowsReadAt = now
+        }
+        guard let windows = screenWindows, let top = ScreenWindows.window(at: point, in: windows),
+              let info = AppDirectory.shared.info(for: top.pid), info.isRegular, let bundleID = info.bundleID else {
+            return (nil, nil)
+        }
+        return (bundleID, top.frame)
     }
 
     /// The time of an event in seconds on the same clock as `systemUptime`.
@@ -261,14 +295,23 @@ final class EventRecorder {
         }
     }
 
-    private func noteTargetApp() {
+    /// The macro's app is the app that received its first input: for a click, the app whose window
+    /// was clicked (which may not have been in front yet), for a key the app in front. When that is
+    /// not known, the app in front at that moment is used, as before.
+    private func noteTargetApp(_ receiver: String?) {
         guard targetApp == nil else { return }
-        if let front = Platform.frontmost(), !Platform.isThisApp(front) {
-            targetApp = front
-            // Remember where its window is, so playback can follow it if it moves.
-            if let app = Platform.runningApplication(bundleID: front.bundleID) {
-                targetWindow = Platform.frontWindow(pid: app.processIdentifier).frame
-            }
+        var chosen: TargetApp?
+        if let bundleID = receiver, bundleID != Bundle.main.bundleIdentifier,
+           let app = Platform.runningApplication(bundleID: bundleID) {
+            chosen = TargetApp(bundleID: bundleID, name: app.localizedName ?? bundleID)
+        } else if let front = Platform.frontmost(), !Platform.isThisApp(front) {
+            chosen = front
+        }
+        guard let target = chosen else { return }
+        targetApp = target
+        // Remember where its window is, so playback can follow it if it moves.
+        if let app = Platform.runningApplication(bundleID: target.bundleID) {
+            targetWindow = Platform.frontWindow(pid: app.processIdentifier).frame
         }
     }
 

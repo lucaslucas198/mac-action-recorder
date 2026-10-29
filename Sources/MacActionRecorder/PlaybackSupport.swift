@@ -3,58 +3,79 @@ import MacActionRecorderCore
 
 /// Holds the safety rules for the run in progress and answers the engine's "is it safe to carry
 /// on?" question on the playback thread. Every value it reads is a fact from macOS (is the app
-/// running, where is its window, how big is the display); it never guesses.
+/// running, which windows are where, which app is in front); it never guesses.
+///
+/// Recordings made with 0.6.1 and later know, for every step, which app received it and which
+/// window was clicked; those are checked step by step. Older recordings only know the app that
+/// was in front when recording started, and are checked against that.
 final class SafetyBox {
     private let lock = NSLock()
     private var options = SafetyOptions()
     private var context: SafetyContext?
-    /// The target app's process, remembered so most checks need not ask the main thread.
-    private var targetPID: pid_t?
+    private var verifyForeground = false
+    private var stepInfo = false
+    private var adjust: ((MacroAction) -> MacroAction)?
 
-    func arm(options: SafetyOptions, context: SafetyContext) {
+    func arm(options: SafetyOptions, context: SafetyContext, verifyForeground: Bool, stepInfo: Bool,
+             adjust: ((MacroAction) -> MacroAction)? = nil) {
         lock.lock()
         self.options = options
         self.context = context
-        targetPID = nil
+        self.verifyForeground = verifyForeground
+        self.stepInfo = stepInfo
+        self.adjust = adjust
         lock.unlock()
-    }
-
-    /// The target's process if it is running: the remembered one while it is alive, otherwise
-    /// looked up again (the app may have been opened or reopened since).
-    private func runningPID(of bundleID: String) -> pid_t? {
-        lock.lock()
-        let cached = targetPID
-        lock.unlock()
-        if let pid = cached, Platform.isProcessAlive(pid) { return pid }
-        let found = Platform.pid(ofBundleID: bundleID)
-        lock.lock()
-        targetPID = found
-        lock.unlock()
-        return found
     }
 
     func disarm() {
         lock.lock()
         context = nil
+        adjust = nil
         lock.unlock()
     }
 
-    /// Returns a reason to stop, or nil. Called on the playback thread.
-    func check(kind: ActionKind?, performer: MacEventPerformer) -> String? {
+    /// Returns a reason to stop, or nil. `action` is nil at the start of each repetition.
+    /// Called on the playback thread.
+    func check(action: MacroAction?, performer: MacEventPerformer) -> String? {
         lock.lock()
         let options = self.options
         let context = self.context
+        let verifyForeground = self.verifyForeground
+        let stepInfo = self.stepInfo
+        let adjust = self.adjust
         lock.unlock()
-        guard let context = context, options.enabled else { return nil }
+        guard let context = context else { return nil }
 
+        if stepInfo {
+            // At the start of a repetition only "has the app quit?" can be said for certain.
+            guard let action = action, action.app != nil else {
+                if action == nil, options.enabled, options.stopIfTargetGone, let target = context.target,
+                   AppDirectory.shared.pid(ofBundleID: target.bundleID) == nil {
+                    return SafetyWatchdog.messagePrefix + "\(target.name) is not running any more."
+                }
+                return nil
+            }
+            return checkStep(action, options: options, context: context, verifyForeground: verifyForeground,
+                             adjust: adjust, performer: performer)
+        }
+
+        guard options.enabled else { return nil }
         var snapshot = SafetySnapshot()
         if let target = context.target {
-            let pid = runningPID(of: target.bundleID)
+            let pid = AppDirectory.shared.pid(ofBundleID: target.bundleID)
             snapshot.targetRunning = (pid != nil)
             if let pid = pid {
-                let reading = Platform.frontWindow(pid: pid)
-                snapshot.windowKnown = reading.readable
-                snapshot.window = reading.frame
+                if let windows = ScreenWindows.list() {
+                    snapshot.windowKnown = true
+                    let own = ScreenWindows.windows(of: pid, in: windows).filter { $0.width >= 200 && $0.height >= 150 }
+                    // The recorded window if it is still there (another window of the app may be in
+                    // front of it, such as a dialog), otherwise the front one.
+                    if let recorded = context.recordedWindow, let match = SafetyWatchdog.matchingWindow(recorded, in: own) {
+                        snapshot.window = match
+                    } else {
+                        snapshot.window = own.first
+                    }
+                }
             }
         }
         snapshot.screen = Platform.primaryDisplaySize()
@@ -65,72 +86,118 @@ final class SafetyBox {
             options: options,
             context: context,
             snapshot: snapshot,
-            actionKind: kind ?? .wait
+            actionKind: action?.kind ?? .wait
+        )
+    }
+
+    private func checkStep(
+        _ action: MacroAction,
+        options: SafetyOptions,
+        context: SafetyContext,
+        verifyForeground: Bool,
+        adjust: ((MacroAction) -> MacroAction)?,
+        performer: MacEventPerformer
+    ) -> String? {
+        guard let app = action.app else { return nil }
+        var snapshot = StepSnapshot()
+        snapshot.frontmost = Platform.bundleIDOfFrontmostApp()
+        let pid = AppDirectory.shared.pid(ofBundleID: app)
+        snapshot.appRunning = (pid != nil)
+        if WindowRelocation.isPositional(action.kind), let windows = ScreenWindows.list() {
+            if let pid = pid {
+                snapshot.appWindows = ScreenWindows.windows(of: pid, in: windows)
+            }
+            // Where the click will really go, after following a moved window.
+            let aimed = adjust?(action) ?? action
+            if let x = aimed.x, let y = aimed.y {
+                snapshot.regularAppAtPoint = AppDirectory.shared.regularApp(at: CGPoint(x: x, y: y), in: windows)
+            }
+        }
+        snapshot.screen = Platform.primaryDisplaySize()
+        if options.enabled && options.stopIfUserMovesMouse {
+            snapshot.pointerDrift = performer.pointerDrift()
+        }
+        return SafetyWatchdog.evaluate(
+            step: action,
+            options: options,
+            verifyForeground: verifyForeground,
+            followWindow: context.followWindow,
+            recordedScreen: context.recordedScreen,
+            snapshot: snapshot,
+            names: { AppDirectory.shared.name(ofBundleID: $0) }
         )
     }
 }
 
-/// Shifts recorded click positions to follow the target window when it has moved. The window's
-/// position is re-read for every action (with a very short cache so fast mouse paths stay cheap),
-/// so dragging the window during a run is followed too.
+/// Shifts recorded click positions to follow a window that has moved. For recordings that know
+/// which window each click was in, that window is found again (same app, same size); for older
+/// ones the app's window from when recording started is used. Window positions are re-read for
+/// every action, with a very short cache so fast mouse paths stay cheap, so dragging the window
+/// during a run is followed too.
 final class WindowFollower {
     private let lock = NSLock()
     private var recorded: WindowFrame?
     private var bundleID: String?
-    private var cachedFrame: WindowFrame?
+    private var enabled = false
+    private var cachedList: [ScreenWindow]?
     private var cachedAt = 0.0
-    private var cachedPID: pid_t?
 
-    func configure(recorded: WindowFrame?, bundleID: String?) {
+    func configure(enabled: Bool, recorded: WindowFrame?, bundleID: String?) {
         lock.lock()
+        self.enabled = enabled
         self.recorded = recorded
         self.bundleID = bundleID
-        cachedFrame = nil
+        cachedList = nil
         cachedAt = 0
-        cachedPID = nil
         lock.unlock()
     }
 
     func adjust(_ action: MacroAction) -> MacroAction {
-        guard WindowRelocation.isPositional(action.kind) else { return action }
+        guard WindowRelocation.isPositional(action.kind), action.x != nil, action.y != nil else { return action }
         lock.lock()
-        let recorded = self.recorded
-        let bundleID = self.bundleID
+        let enabled = self.enabled
+        let recordingWindow = self.recorded
+        let recordingApp = self.bundleID
         lock.unlock()
-        guard let reference = recorded, let identifier = bundleID, let current = currentFrame(bundleID: identifier) else {
+        guard enabled else { return action }
+
+        // Which window, of which app, this action was aimed at when recorded.
+        let reference: WindowFrame?
+        let app: String?
+        if let window = action.window, let stepApp = action.app {
+            reference = window
+            app = stepApp
+        } else if action.app == nil && action.window == nil {
+            reference = recordingWindow
+            app = recordingApp
+        } else {
             return action
         }
-        switch WindowRelocation.assess(recorded: reference, current: current) {
-        case .moved(let dx, let dy):
-            return WindowRelocation.translate([action], recorded: reference, dx: dx, dy: dy)[0]
-        case .same, .resized:
-            return action
-        }
+        guard let recorded = reference, let bundleID = app,
+              let pid = AppDirectory.shared.pid(ofBundleID: bundleID),
+              let windows = currentList() else { return action }
+        let own = ScreenWindows.windows(of: pid, in: windows)
+        guard let match = SafetyWatchdog.matchingWindow(recorded, in: own) else { return action }
+        let dx = match.x - recorded.x
+        let dy = match.y - recorded.y
+        guard abs(dx) > 1 || abs(dy) > 1 else { return action }
+        return WindowRelocation.translate([action], recorded: recorded, dx: dx, dy: dy)[0]
     }
 
-    private func currentFrame(bundleID: String) -> WindowFrame? {
+    private func currentList() -> [ScreenWindow]? {
         let now = ProcessInfo.processInfo.systemUptime
         lock.lock()
-        if let cached = cachedFrame, now - cachedAt < 0.05 {
+        if let cached = cachedList, now - cachedAt < 0.05 {
             lock.unlock()
             return cached
         }
         lock.unlock()
-
-        // The process is remembered, so reading the window position needs no trip to the main thread.
+        let fresh = ScreenWindows.list()
         lock.lock()
-        var pid = cachedPID
-        lock.unlock()
-        if pid == nil || !Platform.isProcessAlive(pid!) {
-            pid = Platform.pid(ofBundleID: bundleID)
-        }
-        guard let process = pid, let frame = Platform.frontWindow(pid: process).frame else { return nil }
-        lock.lock()
-        cachedPID = process
-        cachedFrame = frame
+        cachedList = fresh
         cachedAt = now
         lock.unlock()
-        return frame
+        return fresh
     }
 }
 

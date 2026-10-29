@@ -227,7 +227,7 @@ final class AccuracyAndSafetyTests: XCTestCase {
     private func runToEnd(
         _ recording: Recording,
         config: PlaybackConfig = PlaybackConfig(),
-        safety: @escaping (ActionKind?) -> String? = { _ in nil }
+        safety: @escaping (MacroAction?) -> String? = { _ in nil }
     ) throws -> (performer: TestPerformer, state: PlaybackState) {
         let performer = TestPerformer()
         let engine = PlaybackEngine(performer: performer, safetyCheck: safety)
@@ -244,8 +244,8 @@ final class AccuracyAndSafetyTests: XCTestCase {
             .click(x: 1, y: 0, delay: 0.001), .click(x: 2, y: 0, delay: 0.001), .click(x: 3, y: 0, delay: 0.001)
         ])
         var clicks = 0
-        let result = try runToEnd(recording) { kind in
-            guard kind == .click else { return nil }
+        let result = try runToEnd(recording) { action in
+            guard action?.kind == .click else { return nil }
             clicks += 1
             return clicks == 2 ? SafetyWatchdog.messagePrefix + "window gone" : nil
         }
@@ -259,8 +259,8 @@ final class AccuracyAndSafetyTests: XCTestCase {
         var config = PlaybackConfig()
         config.repeatCount = 2
         var kinds: [ActionKind?] = []
-        _ = try runToEnd(recording, config: config) { kind in
-            kinds.append(kind)
+        _ = try runToEnd(recording, config: config) { action in
+            kinds.append(action?.kind)
             return nil
         }
         XCTAssertEqual(kinds.count, 4)

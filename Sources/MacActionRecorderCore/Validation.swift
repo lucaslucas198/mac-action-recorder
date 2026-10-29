@@ -150,6 +150,10 @@ public enum RecordingValidator {
             }
         }
 
+        if let app = action.app, app.count > 255 {
+            fail("The recorded app name is too long.")
+        }
+
         // Clicks and text may carry the time they took when recorded.
         if action.kind == .click || action.kind == .text, let duration = action.duration,
            !duration.isFinite || duration < 0 || duration > maxDelay {

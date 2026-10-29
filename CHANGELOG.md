@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.6.1
+
+Mac app. Fixes simple macros being stopped or played against the wrong app.
+
+- **The macro's app is now the app that received the input.** Before, it was the app that happened to be in front at the first click. When that first click was the one that switched to Discord (for example from Finder or a browser), the macro was tied to the wrong app: playback brought that app forward and then stopped with "not the frontmost app" or a safety stop after the first click.
+- **Every step remembers which app received it, and every click which window it was in.** Playback checks each step against its own app and window instead of one app and one window for the whole macro. So a macro may click from one app into another, a dialog or second window of the same app in front no longer causes a "window changed size" stop, and a click whose spot is covered by another app's window stops before it is sent. Background helpers and menu bar tools on top never cause a stop.
+- Clicks follow their own window if it moved (the same app, the same size), not the window that was in front when recording started.
+- Typing that goes to a different app starts a new text step.
+- Settings wording: "Check that each step goes to the app it was recorded in" (Playback and Safety).
+- Macros recorded with 0.6.0 or earlier keep working with the old one-app check; if one switches apps, record it again. Their window check now also accepts the recorded window when another window of the same app is in front.
+- File format: actions may carry `app` and `window` (optional; older versions ignore them).
+- CI: the real input test now starts with Finder in front so the recorded click switches to TextEdit, and plays it back with the step checks on.
+
 ## 0.6.0
 
 Mac app. Focus: installing, one copy of the app, permissions, replay timing, and a smoother first run. (Windows: only an internal ordering fix for the administrator warning; nothing visible changes.)

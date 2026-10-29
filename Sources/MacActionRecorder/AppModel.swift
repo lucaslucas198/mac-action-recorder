@@ -238,7 +238,7 @@ final class AppModel: ObservableObject {
         engine = PlaybackEngine(
             performer: performer,
             frontmostBundleID: { Platform.bundleIDOfFrontmostApp() },
-            safetyCheck: { kind in box.check(kind: kind, performer: performer) }
+            safetyCheck: { action in box.check(action: action, performer: performer) }
         )
 
         accessibilityGranted = Permissions.accessibilityGranted
@@ -600,7 +600,7 @@ final class AppModel: ObservableObject {
             }
         }
 
-        if settings.verifyForeground && recording.targetApp == nil {
+        if settings.verifyForeground && recording.targetApp == nil && !recording.hasStepInfo {
             showNotice("Foreground check skipped: this macro has no recorded target app.")
         }
 
@@ -668,6 +668,10 @@ final class AppModel: ObservableObject {
     /// Hands the run its safety rules, window-follow reference and input timing.
     private func armPlayback(for recording: Recording) {
         let follow = settings.followTargetWindow
+        let stepInfo = recording.hasStepInfo
+        // Recordings that know each step's window follow those; older ones the start window.
+        follower.configure(enabled: follow, recorded: stepInfo ? nil : recording.targetWindow, bundleID: recording.targetApp?.bundleID)
+        let follower = self.follower
         safetyBox.arm(
             options: settings.safety,
             context: SafetyContext(
@@ -675,10 +679,11 @@ final class AppModel: ObservableObject {
                 recordedWindow: recording.targetWindow,
                 recordedScreen: recording.recordedScreen,
                 followWindow: follow
-            )
+            ),
+            verifyForeground: settings.verifyForeground,
+            stepInfo: stepInfo,
+            adjust: { follower.adjust($0) }
         )
-        follower.configure(recorded: follow ? recording.targetWindow : nil, bundleID: recording.targetApp?.bundleID)
-        let follower = self.follower
         performer.configure(timing: settings.inputTiming, adjuster: { follower.adjust($0) })
         pointerAtStart = settings.restorePointerAfterPlayback ? Platform.pointerLocation() : nil
     }
@@ -833,7 +838,9 @@ final class AppModel: ObservableObject {
         config.typingCharDelay = settings.typingCharDelay
         config.clickHoldAsRecorded = settings.replayClickHold
         config.typingAsRecorded = settings.replayTypingPace
-        if settings.verifyForeground, let target = recording.targetApp {
+        // Older recordings only know one app for the whole macro. Newer ones are checked step by
+        // step (see SafetyBox), which also allows a macro to switch between apps.
+        if settings.verifyForeground, !recording.hasStepInfo, let target = recording.targetApp {
             config.requiredBundleID = target.bundleID
             config.requiredAppName = target.name
         }

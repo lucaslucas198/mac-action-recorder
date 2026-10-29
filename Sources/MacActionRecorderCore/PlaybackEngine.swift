@@ -81,7 +81,7 @@ public enum PlaybackEvent: Equatable {
 public final class PlaybackEngine {
     private let performer: ActionPerformer
     private let frontmostBundleID: () -> String?
-    private let safetyCheck: (ActionKind?) -> String?
+    private let safetyCheck: (MacroAction?) -> String?
     private let lock = NSLock()
     private var currentRun: Run?
     private var currentState: PlaybackState = .idle
@@ -95,7 +95,7 @@ public final class PlaybackEngine {
     public init(
         performer: ActionPerformer,
         frontmostBundleID: @escaping () -> String? = { nil },
-        safetyCheck: @escaping (ActionKind?) -> String? = { _ in nil }
+        safetyCheck: @escaping (MacroAction?) -> String? = { _ in nil }
     ) {
         self.performer = performer
         self.frontmostBundleID = frontmostBundleID
@@ -331,7 +331,7 @@ public final class PlaybackEngine {
                             fail(run, foregroundMessage(config))
                             return
                         }
-                        if let reason = safetyCheck(action.kind) {
+                        if let reason = safetyCheck(action) {
                             fail(run, reason)
                             return
                         }
@@ -460,7 +460,7 @@ public final class PlaybackEngine {
 
     private func foregroundMessage(_ config: PlaybackConfig) -> String {
         let name = config.requiredAppName ?? config.requiredBundleID ?? "the target app"
-        return "Playback stopped because \(name) is not the frontmost app."
+        return "Playback stopped because \(name) is not the frontmost app. If this macro switches to another app on purpose, record it again: macros recorded with version 0.6.1 or later are checked step by step against the app each step was recorded in."
     }
 
     // MARK: State helpers

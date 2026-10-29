@@ -182,7 +182,7 @@ Tips:
 
 - Select actions in the list and click **Play selection** (or right-click > *Play from here*) to test just one section.
 - Turn off **mouse movement** in Settings > Recording for small, clean macros that jump from click to click.
-- Turn on **Only play while the recorded app is in front** (Settings > Playback) so the macro stops instead of typing into the wrong window.
+- Keep **Check that each step goes to the app it was recorded in** on (Settings > Playback, on by default) so the macro stops instead of typing into the wrong window.
 - Speed, repeat and loop delay are saved with each macro.
 - **Export** writes a `.macro.json` file. Copy it to your other Mac and use **Import**.
 
@@ -208,7 +208,7 @@ This app does not and cannot promise perfect replay.
 | Shift-click, Command-click | Records and replays the held modifier keys. |
 | Window moved | If the window has the same size, every click is shifted by the same amount. |
 | Window resized, app quit, display changed | The run stops with a message (Settings > Safety). It never guesses. |
-| Another app took focus | Stops (on by default: *Only play while the recorded app is in front*). |
+| Another app took focus, or covers a click's spot | Stops before that step (on by default: *Check that each step goes to the app it was recorded in*). Each step knows which app received it, so a macro may still click from one app into another. |
 | App not in front or closed at the start | Brings it to the front, and opens it if closed (Settings > Playback). |
 | Clicks shortened, typing at a different pace | Each click is held as long as it was recorded and text is typed at the recorded pace (since 0.6.0; Settings > Playback > *Match the recording*). |
 | Small delays adding up over a long macro | Every step is scheduled on the recorded timeline, so a late step is made up in the next gap (since 0.6.0). |

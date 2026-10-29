@@ -54,8 +54,15 @@ public struct RawEvent: Equatable {
     /// Modifier keys held while a mouse or scroll event happened (Shift-click, ⌘-click, ...).
     /// Key events carry their own modifiers inside `kind`.
     public var modifiers: KeyModifiers
+    /// The app that received the event (bundle ID), when known.
+    public var app: String?
+    /// For mouse events, the frame of the window under the pointer, when known.
+    public var window: WindowFrame?
 
-    public init(time: Double, x: Double = 0, y: Double = 0, kind: RawEventKind, modifiers: KeyModifiers = []) {
+    public init(time: Double, x: Double = 0, y: Double = 0, kind: RawEventKind, modifiers: KeyModifiers = [],
+                app: String? = nil, window: WindowFrame? = nil) {
+        self.app = app
+        self.window = window
         self.time = time
         self.x = x
         self.y = y
@@ -147,7 +154,7 @@ public enum RecordingBuilder {
                 guard options.includeMouseMove,
                       throttle.shouldAccept(time: event.time, x: event.x, y: event.y) else { break }
                 assembler.append(
-                    round2(.drag(x: event.x, y: event.y, button: button), modifiers: event.modifiers),
+                    tagged(round2(.drag(x: event.x, y: event.y, button: button), modifiers: event.modifiers), event),
                     start: event.time,
                     end: event.time
                 )
@@ -169,7 +176,7 @@ public enum RecordingBuilder {
                         assembler.extendLast(to: up.time)
                     } else {
                         assembler.append(
-                            round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers),
+                            tagged(round2(.click(x: event.x, y: event.y, button: button, count: min(count, 3)), modifiers: event.modifiers), event),
                             start: event.time,
                             end: up.time
                         )
@@ -179,7 +186,7 @@ public enum RecordingBuilder {
                     index += 1 // the matching mouse-up has been consumed
                 } else {
                     assembler.append(
-                        round2(.mouseDown(x: event.x, y: event.y, button: button), modifiers: event.modifiers),
+                        tagged(round2(.mouseDown(x: event.x, y: event.y, button: button), modifiers: event.modifiers), event),
                         start: event.time,
                         end: event.time
                     )
@@ -192,7 +199,7 @@ public enum RecordingBuilder {
                 if let position = openButtons.firstIndex(of: button) {
                     openButtons.remove(at: position)
                     assembler.append(
-                        round2(.mouseUp(x: event.x, y: event.y, button: button), modifiers: event.modifiers),
+                        tagged(round2(.mouseUp(x: event.x, y: event.y, button: button), modifiers: event.modifiers), event),
                         start: event.time,
                         end: event.time
                     )
@@ -200,7 +207,7 @@ public enum RecordingBuilder {
 
             case .scroll(let dx, let dy):
                 guard options.recordScroll else { break }
-                if let last = assembler.actions.last, last.kind == .scroll,
+                if let last = assembler.actions.last, last.kind == .scroll, last.app == event.app,
                    let end = assembler.lastEnd, event.time - end < scrollCoalesceGap {
                     let position = assembler.actions.count - 1
                     assembler.actions[position].scrollX = (last.scrollX ?? 0) + dx
@@ -210,7 +217,7 @@ public enum RecordingBuilder {
                     assembler.extendLast(to: event.time)
                 } else {
                     assembler.append(
-                        round2(.scroll(dx: dx, dy: dy, x: event.x, y: event.y), modifiers: event.modifiers),
+                        tagged(round2(.scroll(dx: dx, dy: dy, x: event.x, y: event.y), modifiers: event.modifiers), event),
                         start: event.time,
                         end: event.time
                     )
@@ -220,20 +227,22 @@ public enum RecordingBuilder {
                 let isShortcut = !modifiers.isDisjoint(with: [.command, .control])
                 if isShortcut {
                     guard options.recordShortcuts else { break }
-                    assembler.append(.key(keyCode, modifiers: modifiers), start: event.time, end: event.time)
+                    assembler.append(tagged(.key(keyCode, modifiers: modifiers), event), start: event.time, end: event.time)
                 } else if isPrintable(characters) {
                     guard options.recordText else { break }
-                    if let last = assembler.actions.last, last.kind == .text,
+                    // Typing continues the text before it, unless there was a long pause or the
+                    // keys now go to another app.
+                    if let last = assembler.actions.last, last.kind == .text, last.app == event.app,
                        let end = assembler.lastEnd, event.time - end <= textRunGap {
                         let position = assembler.actions.count - 1
                         assembler.actions[position].text = (last.text ?? "") + characters
                         assembler.extendLast(to: event.time)
                     } else {
-                        assembler.append(.text(characters), start: event.time, end: event.time)
+                        assembler.append(tagged(.text(characters), event), start: event.time, end: event.time)
                     }
                 } else {
                     guard options.recordShortcuts else { break }
-                    assembler.append(.key(keyCode, modifiers: modifiers), start: event.time, end: event.time)
+                    assembler.append(tagged(.key(keyCode, modifiers: modifiers), event), start: event.time, end: event.time)
                 }
 
             case .keyUp:
@@ -271,6 +280,16 @@ public enum RecordingBuilder {
 
     static func roundPosition(_ value: Double) -> Double {
         return (value * 100).rounded() / 100
+    }
+
+    /// Copies the app (and, for mouse actions, the window) that received `event` onto `action`.
+    private static func tagged(_ action: MacroAction, _ event: RawEvent) -> MacroAction {
+        var result = action
+        result.app = event.app
+        if WindowRelocation.isPositional(action.kind), let frame = event.window, frame.isUsable {
+            result.window = frame
+        }
+        return result
     }
 
     private static func round2(_ action: MacroAction, modifiers: KeyModifiers = []) -> MacroAction {
