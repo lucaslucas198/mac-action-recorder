@@ -75,6 +75,9 @@ enum InputSelfTest {
         // process is refused by macOS.)
         let desktopSpot = CGPoint(x: frame.x + frame.width + 60, y: frame.y + frame.height + 60)
         func bringOtherAppForward() {
+            // This test app's own windows must not be under the clicks.
+            Platform.onMain { for window in NSApp.windows { window.orderOut(nil) } }
+            Thread.sleep(forTimeInterval: 0.3)
             postClick(at: desktopSpot)
             Thread.sleep(forTimeInterval: 0.8)
         }

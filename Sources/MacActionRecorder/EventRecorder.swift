@@ -327,8 +327,15 @@ final class EventRecorder {
             screenWindows = ScreenWindows.list()
             windowsReadAt = now
         }
-        if let windows = screenWindows, let top = ScreenWindows.window(at: point, in: windows) {
-            return top.pid == ProcessInfo.processInfo.processIdentifier
+        if let windows = screenWindows {
+            let me = ProcessInfo.processInfo.processIdentifier
+            // See-through windows of helpers (the Dock has one on some Macs) are skipped; this
+            // app's menu and menu bar item are not "normal app" windows, so they are checked first.
+            for candidate in windows where candidate.frame.contains(x: Double(point.x), y: Double(point.y)) {
+                if candidate.pid == me { return true }
+                if AppDirectory.shared.info(for: candidate.pid)?.isRegular == true { return false }
+            }
+            return false
         }
         // The list could not be read: fall back to this app's own window list.
         if now - framesCachedAt > 0.25 {
