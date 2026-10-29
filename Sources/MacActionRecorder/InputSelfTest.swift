@@ -70,15 +70,17 @@ enum InputSelfTest {
         Platform.onMain { FrontmostTracker.shared.start() }
 
         // Another app in front, so the recorded click is the one that switches to TextEdit (the
-        // way a user clicks into Discord). A click on an empty part of the desktop makes Finder the
-        // active app without opening a Finder window. (Activating an app from a background
-        // process is refused by macOS.)
-        let desktopSpot = CGPoint(x: frame.x + frame.width + 60, y: frame.y + frame.height + 60)
+        // way a user clicks into Discord). Calculator is opened, moved beside TextEdit's window
+        // (through the Accessibility interface) and made active by clicking its title bar, since
+        // macOS refuses to activate an app from a background process, and a click on the desktop
+        // can slide all windows aside.
+        let calculator = prepareCalculator(awayFrom: frame)
         func bringOtherAppForward() {
             // This test app's own windows must not be under the clicks.
             Platform.onMain { for window in NSApp.windows { window.orderOut(nil) } }
-            Thread.sleep(forTimeInterval: 0.3)
-            postClick(at: desktopSpot)
+            if let titleBar = calculator?.titleBar, titleBar.x >= 0 {
+                postClick(at: titleBar)
+            }
             Thread.sleep(forTimeInterval: 0.8)
         }
         bringOtherAppForward()
@@ -256,7 +258,43 @@ enum InputSelfTest {
 
         // Leave TextEdit without asking to save.
         _ = Platform.onMain { app.forceTerminate() }
+        _ = Platform.onMain { calculator?.app.forceTerminate() }
         finish(folder)
+    }
+
+    // MARK: Another app
+
+    /// Opens Calculator and moves its window to the right of `frame`, so a click on its title bar
+    /// makes it the active app without covering TextEdit. Nil when that is not possible.
+    private static func prepareCalculator(awayFrom frame: WindowFrame) -> (app: NSRunningApplication, titleBar: CGPoint)? {
+        _ = InstallDoctor.run("/usr/bin/open", ["-a", "Calculator"])
+        var calculator: NSRunningApplication?
+        for _ in 0..<40 {
+            Thread.sleep(forTimeInterval: 0.25)
+            calculator = Platform.onMain { Platform.runningApplication(bundleID: "com.apple.calculator") }
+            if let found = calculator, Platform.frontWindow(pid: found.processIdentifier).frame != nil { break }
+        }
+        guard let app = calculator else {
+            log("Calculator did not open; the test continues with TextEdit in front")
+            return nil
+        }
+        let element = AXUIElementCreateApplication(app.processIdentifier)
+        var windowsValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+           let windows = windowsValue as? [AXUIElement], let window = windows.first {
+            var position = CGPoint(x: frame.x + frame.width + 10, y: frame.y + 40)
+            if let value = AXValueCreate(.cgPoint, &position) {
+                AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+        guard let moved = Platform.frontWindow(pid: app.processIdentifier).frame ??
+                ScreenWindows.list().flatMap({ ScreenWindows.windows(of: app.processIdentifier, in: $0).first }) else {
+            log("Calculator has no window on screen; the test continues with TextEdit in front")
+            return (app, CGPoint(x: -1, y: -1))
+        }
+        log("Calculator window: \(Int(moved.x)), \(Int(moved.y)), \(Int(moved.width))×\(Int(moved.height))")
+        return (app, CGPoint(x: moved.x + moved.width / 2, y: moved.y + 12))
     }
 
     // MARK: Timeline

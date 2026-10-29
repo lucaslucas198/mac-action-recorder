@@ -329,8 +329,9 @@ final class EventRecorder {
         }
         if let windows = screenWindows {
             let me = ProcessInfo.processInfo.processIdentifier
-            // See-through windows of helpers (the Dock has one on some Macs) are skipped; this
-            // app's menu and menu bar item are not "normal app" windows, so they are checked first.
+            // Front to back: a window of this app (the main window, its menu, the menu bar item)
+            // means "ignore"; a normal app's window means "record"; see-through windows of helpers
+            // (the Dock has one on some Macs) are skipped.
             for candidate in windows where candidate.frame.contains(x: Double(point.x), y: Double(point.y)) {
                 if candidate.pid == me { return true }
                 if AppDirectory.shared.info(for: candidate.pid)?.isRegular == true { return false }
