@@ -1,0 +1,8 @@
+Running from: /Applications/Mac Action Recorder.app
+Location: applications
+Signature: identifier "io.github.macactionrecorder.app" and certificate leaf = H"2f918d4807e7e7050ce154de91a16bc22be49ea0"
+Phase: finished
+Completed steps: Checking this Mac (-); Closing other copies of the app (-); Copying the app (-); Signing it for this Mac (-); Moving it into Applications (-); Reopening from Applications (Now running from /Applications); Ejecting old installer disks (Ejected Mac Action Recorder); Moving old copies to the Trash (No other copies found); Clearing old permission entries (Done)
+Results: Ejected 1 old installer disk. Removed any old permission entries for this app, so the switches in System Settings now apply to this copy. Switch Input Monitoring and Accessibility on below.
+Needs setup now: false
+Picture: setup-e2e.png

@@ -1,0 +1,55 @@
+Volumes before:
+Mac Action Recorder
+Macintosh HD
+App: /Users/runner/work/mac-action-recorder/mac-action-recorder/build/Mac Action Recorder.app
+Location: elsewhere
+Requirement: cdhash H"eb37ed3bb35d009e1db7cc7cc287aa68275a092d" or cdhash H"8f40d428df69a0842a6ac81adb1447fa0322851b"
+Signature kind: adHoc
+PASS  running as the app bundle with the expected bundle ID
+Mounted disk images: ["/Library/Developer/CoreSimulator/Volumes/iOS_23E254a", "/Library/Developer/CoreSimulator/Volumes/xrOS_23N301", "/Library/Developer/CoreSimulator/Volumes/watchOS_23T240b", "/Library/Developer/CoreSimulator/Volumes/watchOS_23S303", "/Library/Developer/CoreSimulator/Volumes/iOS_23F77", "/Library/Developer/CoreSimulator/Volumes/tvOS_23L470", "/Library/Developer/CoreSimulator/Volumes/iOS_23C54", "/Library/Developer/CoreSimulator/Volumes/xrOS_23O249a", "/Library/Developer/CoreSimulator/Volumes/watchOS_23T570", "/Library/Developer/CoreSimulator/Volumes/xrOS_23O470", "/Library/Developer/CoreSimulator/Volumes/tvOS_23K51", "/Library/Developer/CoreSimulator/Volumes/tvOS_23L243a", "/System/Library/AssetsV2/com_apple_MobileAsset_UAF_Siri_Understanding/purpose_auto/c10eb90af2d4996616c3cd0f6bac0833eb4925fa.asset/.AssetData", "/System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/6dd55b0d06633a00de6f57ccb910a66a5ba2409a.asset/.AssetData", "/private/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.wyxbSl", "/Volumes/Mac Action Recorder"]
+PASS  the test disk image with the app is listed by hdiutil
+Ejected: ["Mac Action Recorder"]
+PASS  old disk images were ejected
+PASS  /Volumes/Mac Action Recorder is no longer mounted
+PASS  copied the app with ditto
+  script: ==> Removing the download flag
+  script: ==> Looking for this Mac's signing certificate
+  script: ==> Creating this Mac's signing certificate (one time only)
+  script: ==> Certificate added to the keychain
+  script: ==> Signing the app with "Mac Action Recorder Local Signing"
+  script: /Users/runner/work/_temp/install-test/staged/Mac Action Recorder.app: replacing existing signature
+  script: Signed with: Mac Action Recorder Local Signing
+Signing result: Optional(MacActionRecorder.AppInstaller.PrepareResult.signed); lines seen: ["==> Removing the download flag", "==> Looking for this Mac\'s signing certificate", "==> Creating this Mac\'s signing certificate (one time only)", "==> Certificate added to the keychain", "==> Signing the app with \"Mac Action Recorder Local Signing\"", "/Users/runner/work/_temp/install-test/staged/Mac Action Recorder.app: replacing existing signature", "Signed with: Mac Action Recorder Local Signing"]
+PASS  the copy was signed with the local certificate
+PASS  the progress screen received live lines from the signing script
+Staged requirement: identifier "io.github.macactionrecorder.app" and certificate leaf = H"2f918d4807e7e7050ce154de91a16bc22be49ea0"
+PASS  the signed copy has a fixed (certificate) requirement
+Second signing result: Optional(MacActionRecorder.AppInstaller.PrepareResult.signed)
+PASS  signing again gives the same requirement (permissions survive updates)
+Swap helper finished after 1.82 s with status 0
+PASS  the swap helper waited for the old process to quit
+PASS  the app in the destination is the signed copy
+PASS  the staged copy was removed
+PASS  no half-finished copy was left behind
+Signed copy said: Mac Action Recorder 0.0.0-ci (status 0)
+PASS  the locally signed copy starts
+PASS  codesign --verify accepts the locally signed copy
+Reopen helper finished after 1.27 s with status 0
+PASS  the reopen helper waited for the old process to quit
+Spotlight already lists the stray copy: false
+Moved to the Trash: ["/Users/runner/work/_temp/install-test/Downloads/Mac Action Recorder.app"]
+PASS  a stray copy was moved to the Trash
+PASS  the stray copy is gone from its folder
+PASS  the kept copy is still there
+PASS  the running copy is still there
+PASS  a firmlinked path counts as the same copy
+Second copy decided: quit (quit)
+PASS  a second copy opened later quits by itself and leaves the first one running
+mdfind status 0: 
+PASS  Spotlight search runs
+tccutil reset status: 0
+PASS  tccutil reset for this app's bundle ID succeeds
+ALL PASSED
+Exit status: 0
+Volumes after:
+Macintosh HD
