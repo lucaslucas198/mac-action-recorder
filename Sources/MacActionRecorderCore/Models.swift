@@ -272,6 +272,9 @@ public struct Recording: Codable, Identifiable, Equatable {
     public var targetWindow: WindowFrame?
     /// A channel or person to open (with the Quick Switcher) before the macro starts.
     public var startChannel: String?
+    /// Messages and channels that change on every repetition, send windows and a daily limit.
+    /// Optional; older versions of the app ignore it.
+    public var campaign: Campaign?
     public var actions: [MacroAction]
 
     public init(
@@ -286,6 +289,7 @@ public struct Recording: Codable, Identifiable, Equatable {
         notes: String? = nil,
         targetWindow: WindowFrame? = nil,
         startChannel: String? = nil,
+        campaign: Campaign? = nil,
         actions: [MacroAction] = []
     ) {
         self.formatVersion = formatVersion
@@ -299,6 +303,7 @@ public struct Recording: Codable, Identifiable, Equatable {
         self.notes = notes
         self.targetWindow = targetWindow
         self.startChannel = startChannel
+        self.campaign = campaign
         self.actions = actions
     }
 

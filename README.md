@@ -25,6 +25,7 @@ A small native macOS app that records your mouse and keyboard, then plays the re
 - **Welcome screen** on first launch: sets the app up on your Mac, shows the live status of the two permissions, and closes with an **Enter** button (see [Install](#install-on-a-mac-no-xcode-needed)).
 - **Auto-update** from this repository's GitHub Releases (see [Updates](#updates)): the app notices a newer version, downloads the finished app in the background, and installs it when you click Restart to Update.
 - **Play Macro** submenu in the menu bar for starting a saved macro without opening the window.
+- **Messages & Schedule** (Mac): rotate several messages and channels across repetitions, only start runs at chosen times of day, cap runs per day, and see every run in an **Activity** log. See [Messages & Schedule](#messages--schedule).
 - **Discord presets** (optional): keyboard-only building blocks that use Discord's Quick Switcher (`⌘K`). The app contains **no hardcoded screen coordinates**.
 
 ## Windows version
@@ -185,6 +186,20 @@ Tips:
 - Keep **Check that each step goes to the app it was recorded in** on (Settings > Playback, on by default) so the macro stops instead of typing into the wrong window.
 - Speed, repeat and loop delay are saved with each macro.
 - **Export** writes a `.macro.json` file. Copy it to your other Mac and use **Import**.
+
+## Messages & Schedule
+
+For macros that repeat a message in Discord. Open **Messages & Schedule** under the macro's name (Mac app only for now).
+
+- **Messages:** one per line. Any "Type text" step containing `{message}` types the current message. **Add send-message steps** appends "type `{message}`, press Return" to the macro.
+- **Channels:** one channel or person per line, as you would type it in the Quick Switcher. Before every repetition the app presses `⌘K`, types the next channel and presses Return. (If your macro types `{channel}` itself, the app leaves that to the macro.)
+- **Order:** the current message goes to every channel, then the next message starts. With messages 1, 2 and channels A, B: 1→A, 1→B, 2→A, 2→B, 1→A, ... Each repetition is one run, so "Repeat" and "seconds between repeats" still decide how many runs and how far apart. Stopping keeps your place; **Start from the beginning** resets it.
+- **Send times:** up to 8 daily windows in this Mac's local time (for example 09:00–21:00; a window may run past midnight). Outside them playback waits and carries on when the next window opens.
+- **Daily limit:** the most runs of this macro that may finish per day. After that, playback waits until midnight.
+- While playback waits, the progress area shows why and for how long. Stop, Pause and the emergency-stop shortcut work during every wait. Discord has to stay open and logged in, and the screen has to stay **unlocked**: macOS does not deliver simulated input to apps behind the lock screen. While playback runs or waits, the app asks macOS not to put the Mac to sleep when idle; it does not stop the screen from locking (check Lock Screen settings).
+- **Activity** (button at the top): every run that finished, failed or was stopped, with the message number and channel. It does not store the message text, stays on this Mac, and keeps the newest 2,000 entries.
+
+What this does **not** do, on purpose: it does not use a Discord account token, run in the background without Discord's window, use several accounts, join servers, accept friend requests, reply to DMs automatically, or add random timing to look less automated. Those need direct access to your account or are meant to get around Discord's limits, which this app does not try to do. Server rules and slowmode still apply, and Discord can rate-limit or restrict accounts that send a lot of messages.
 
 ## Reliability: read this
 

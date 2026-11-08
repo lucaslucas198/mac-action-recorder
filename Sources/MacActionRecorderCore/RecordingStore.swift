@@ -76,6 +76,8 @@ public final class RecordingStore {
         var copy = recording
         copy.id = UUID()
         copy.name = recording.name + " copy"
+        // A copy starts its rotation from the first message and channel.
+        copy.campaign?.position = 0
         copy.createdAt = now
         copy.modifiedAt = now
         copy.actions = recording.actions.map { action in

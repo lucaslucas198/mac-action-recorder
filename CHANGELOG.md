@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+Mac app. **Messages & Schedule**: repeat a Discord macro with rotating messages and channels, only at chosen times, with a daily cap, and keep a log.
+
+- **Rotating messages.** A macro can have a list of messages (one per line). Steps that type `{message}` type the current one; **Add send-message steps** appends "type `{message}`, press Return".
+- **Rotating channels.** A list of channels or people. Before every repetition the app opens the next one with Discord's Quick Switcher (`⌘K`), unless the macro types `{channel}` itself. The list replaces "Open channel" while it has entries.
+- **Order:** the current message goes to every channel, then the next message starts (1→A, 1→B, 2→A, ...). Stopping keeps the place; **Start from the beginning** resets it; a duplicated macro starts from the beginning.
+- **Send times.** Up to 8 daily time windows (local time, may run past midnight). Outside them playback waits and carries on when the next window opens.
+- **Daily limit.** The most repetitions of a macro that may finish per day; after that playback waits until midnight.
+- While waiting, the progress area shows what it is waiting for and a countdown ("Next run in 0:42"); Stop and Pause work during every wait. After a long wait the macro's app is brought to the front again.
+- **Activity log** (the Activity button): every repetition that finished, failed or was stopped, with time, macro, message number and channel (not the message text). Kept on this Mac only, newest 2,000 entries; Clear Log removes it.
+- Check: flags messages that no step types, a `{message}` with no messages, and an endless send loop with no daily limit. Rotating channels count as choosing a channel.
+- File format: an optional `campaign` object (see docs/RECORDING_FORMAT.md). Older versions ignore it. **Not in the Windows app yet**; saving such a macro on Windows drops the campaign.
+
 ## 0.6.1
 
 Mac app. Fixes simple macros being stopped or played against the wrong app.

@@ -164,6 +164,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var iteration = 0
     @Published private(set) var totalIterations: Int?
 
+    // Campaign (rotation, send windows, daily limit) and the activity log
+    /// The message and channel of the repetition that is running or about to run.
+    @Published private(set) var campaignStep: CampaignStep?
+    /// What playback is waiting for before the next repetition, if anything.
+    @Published private(set) var playbackWait: PlaybackWait?
+    /// Repetitions finished and failed during the current (or last) playback.
+    @Published private(set) var sessionSent = 0
+    @Published private(set) var sessionFailed = 0
+    @Published private(set) var activity: [ActivityEntry] = []
+    @Published var showingActivity = false
+
     // Permissions
     @Published private(set) var accessibilityGranted = false
     @Published private(set) var inputMonitoringGranted = false
@@ -198,6 +209,21 @@ final class AppModel: ObservableObject {
     private var pointerAtStart: CGPoint?
     /// Number of actions the app prepends (opening the start channel) in the current run.
     private var prefixLength = 0
+    private let activityLog = ActivityLogStore(
+        fileURL: AppModel.supportDirectory.appendingPathComponent("activity-log.json")
+    )
+    /// The playback whose repetitions are written to the activity log.
+    private struct ActiveRun {
+        let recordingID: UUID
+        let name: String
+        /// False when playing a selected section: those runs are tests and are not logged.
+        let logs: Bool
+        var iteration = 0
+        var step: CampaignStep?
+        /// A repetition has started and not finished yet.
+        var inProgress = false
+    }
+    private var activeRun: ActiveRun?
     /// Cancels a pending "bring the target to the front" step.
     private var startupToken = UUID()
     /// Why the most recent run was stopped by the safety rules, if it was.
@@ -243,6 +269,7 @@ final class AppModel: ObservableObject {
 
         accessibilityGranted = Permissions.accessibilityGranted
         inputMonitoringGranted = Permissions.inputMonitoringGranted
+        activity = activityLog.entries
 
         engine.onEvent = { [weak self] event in
             self?.receive(event)
@@ -572,7 +599,8 @@ final class AppModel: ObservableObject {
 
         var config = makeConfig(for: recording, range: range)
         let prefix = startPrefix(for: recording, range: range)
-        config.prefixCount = prefix.count
+        // A rotating channel is opened before every repetition; a fixed one only before the first.
+        config.prefixCount = rotatesChannels(recording, range: range) ? 0 : prefix.count
 
         if !skipConfirmation {
             if config.infinite {
@@ -612,6 +640,11 @@ final class AppModel: ObservableObject {
         iteration = 0
         totalIterations = nil
         prefixLength = prefix.count
+        campaignStep = nil
+        playbackWait = nil
+        sessionSent = 0
+        sessionFailed = 0
+        activeRun = ActiveRun(recordingID: recording.id, name: recording.name, logs: range == nil)
         status = .preparing(config.countdown)
 
         if !startHotKeyMonitor() {
@@ -660,9 +693,19 @@ final class AppModel: ObservableObject {
     /// The "open the Discord channel first" steps for this run, if the macro has a start channel.
     /// They run in the first repetition only, and never when playing just a selected section.
     private func startPrefix(for recording: Recording, range: Range<Int>?) -> [MacroAction] {
+        if rotatesChannels(recording, range: range) {
+            return Presets.openChannel(Campaign.channelPlaceholder)
+        }
         guard range == nil, let channel = recording.startChannel?.trimmingCharacters(in: .whitespacesAndNewlines),
               !channel.isEmpty else { return [] }
         return Presets.openChannel(channel)
+    }
+
+    /// True when the campaign has channels and the macro does not type `{channel}` itself, so the
+    /// app opens the next channel with the Quick Switcher before every repetition.
+    private func rotatesChannels(_ recording: Recording, range: Range<Int>?) -> Bool {
+        guard range == nil, let campaign = recording.campaign, !campaign.activeChannels.isEmpty else { return false }
+        return !recording.usesPlaceholder(Campaign.channelPlaceholder)
     }
 
     /// Hands the run its safety rules, window-follow reference and input timing.
@@ -785,6 +828,21 @@ final class AppModel: ObservableObject {
     }
 
     private func finishPlayback(_ result: AppStatus) {
+        if let run = activeRun {
+            if run.inProgress && run.logs {
+                switch result {
+                case .error(let message):
+                    logActivity(run, outcome: .failed, detail: message)
+                    sessionFailed += 1
+                case .stopped(let text) where text != "Finished":
+                    logActivity(run, outcome: .stopped, detail: text)
+                default:
+                    break
+                }
+            }
+            activeRun = nil
+        }
+        playbackWait = nil
         startupToken = UUID()
         safetyBox.disarm()
         stopHotKeyMonitor()
@@ -845,6 +903,16 @@ final class AppModel: ObservableObject {
             config.requiredAppName = target.name
         }
         config.range = range
+        if var campaign = recording.campaign {
+            if range != nil {
+                // Playing a selected section is a test: fill in the placeholders, but do not wait
+                // for a send window or count towards the daily limit.
+                campaign.sendWindows = []
+                campaign.dailyLimit = nil
+            }
+            config.campaign = campaign
+            config.sentToday = activityLog.sentToday(recordingID: recording.id)
+        }
         return config
     }
 
@@ -861,12 +929,109 @@ final class AppModel: ObservableObject {
                 guard let self = self, self.status.isPlaybackPhase else { return }
                 self.iteration = iteration
                 self.totalIterations = total
+                self.runStarted(iteration: iteration)
             }
         case .actionStarted(let index):
             relay.update(index: index)
         case .progress(let value):
             relay.update(index: value.actionIndex, progress: value)
+        case .campaignStep(let step):
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.status.isPlaybackPhase else { return }
+                self.campaignStep = step
+                self.activeRun?.step = step
+            }
+        case .runCompleted(let iteration):
+            DispatchQueue.main.async { [weak self] in
+                self?.runCompleted(iteration: iteration)
+            }
+        case .waiting(let wait):
+            DispatchQueue.main.async { [weak self] in
+                self?.waitChanged(wait)
+            }
         }
+    }
+
+    private func runStarted(iteration: Int) {
+        activeRun?.iteration = iteration
+        activeRun?.inProgress = true
+    }
+
+    /// A repetition ran every step: log it and move the rotation on.
+    private func runCompleted(iteration: Int) {
+        guard var run = activeRun else { return }
+        run.inProgress = false
+        activeRun = run
+        sessionSent += 1
+        guard run.logs else { return }
+        logActivity(run, outcome: .sent, detail: nil)
+        if let step = run.step {
+            // Saved straight away, so a crash or a quit keeps the place in the rotation.
+            mutate(run.recordingID) { recording in
+                recording.campaign?.position = step.position + 1
+            }
+        }
+    }
+
+    private func waitChanged(_ wait: PlaybackWait?) {
+        guard status.isPlaybackPhase else { return }
+        let previous = playbackWait
+        playbackWait = wait
+        // After waiting for a send window or the next day, bring the macro's app forward again:
+        // something else is very likely in front by now. The engine pauses briefly for this.
+        if wait == nil, let previous = previous, previous.reason != .loopDelay,
+           settings.bringTargetToFront,
+           let id = activeRun?.recordingID,
+           let target = recordings.first(where: { $0.id == id })?.targetApp,
+           !Platform.isThisApp(target),
+           let app = Platform.runningApplication(bundleID: target.bundleID) {
+            Platform.activate(app)
+        }
+    }
+
+    private func logActivity(_ run: ActiveRun, outcome: ActivityEntry.Outcome, detail: String?) {
+        let entry = ActivityEntry(
+            recordingID: run.recordingID,
+            recordingName: run.name,
+            outcome: outcome,
+            run: run.iteration > 0 ? run.iteration : nil,
+            messageNumber: run.step?.messageIndex.map { $0 + 1 },
+            channel: run.step?.channel,
+            detail: detail
+        )
+        activityLog.append(entry)
+        activity = activityLog.entries
+    }
+
+    func clearActivity() {
+        activityLog.clear()
+        activity = []
+    }
+
+    /// Runs of this macro that finished today (for the daily limit display).
+    func sentToday(_ recording: Recording) -> Int {
+        return activityLog.sentToday(recordingID: recording.id)
+    }
+
+    // MARK: Campaign editing
+
+    /// Changes the selected macro's campaign, creating it when needed. A campaign that no longer
+    /// changes anything is removed, so the file stays as it was.
+    func editCampaign(_ change: (inout Campaign) -> Void) {
+        edit { recording in
+            var campaign = recording.campaign ?? Campaign()
+            change(&campaign)
+            recording.campaign = campaign.isEffective ? campaign : nil
+        }
+    }
+
+    func resetRotation() {
+        edit { $0.campaign?.position = 0 }
+    }
+
+    /// Appends "type {message}, press Return" so the rotating messages are sent.
+    func addSendMessageSteps() {
+        edit { $0.actions.append(contentsOf: Presets.sendMessage(Campaign.messagePlaceholder)) }
     }
 
     private func deliverProgress(index: Int?, progress value: PlaybackProgress?) {

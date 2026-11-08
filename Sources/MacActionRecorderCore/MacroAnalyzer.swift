@@ -144,6 +144,7 @@ public enum MacroAnalyzer {
             $0.kind == .key && $0.keyCode == KeyCodes.ansiK && ($0.modifiers ?? []).contains(.command)
         }
         let hasStartChannel = !(recording.startChannel ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+            || !(recording.campaign?.activeChannels.isEmpty ?? true)
         if hasText && hasPlainReturn && !opensQuickSwitcher && !hasStartChannel {
             var detail = "Nothing in this macro chooses a channel, so the message goes to whichever channel Discord has open. Set \"Open this channel first\" for the macro, or insert the Quick Switcher preset."
             if let discord = discord, !discord.favoriteChannels.isEmpty {
@@ -154,6 +155,41 @@ public enum MacroAnalyzer {
                 severity: .info,
                 title: "No channel is selected first",
                 detail: detail
+            ))
+        }
+
+        // Campaign messages that nothing types.
+        if let campaign = recording.campaign, !campaign.activeMessages.isEmpty,
+           !recording.usesPlaceholder(Campaign.messagePlaceholder) {
+            findings.append(MacroFinding(
+                id: "campaign-unused-messages",
+                severity: .warning,
+                title: "The campaign's messages are never typed",
+                detail: "No \"Type text\" step contains \(Campaign.messagePlaceholder), so the rotating messages are not used. In Repeat & Campaign, click \"Add send-message steps\", or put \(Campaign.messagePlaceholder) into a text step."
+            ))
+        }
+        if let campaign = recording.campaign, campaign.activeMessages.isEmpty,
+           recording.usesPlaceholder(Campaign.messagePlaceholder) {
+            findings.append(MacroFinding(
+                id: "campaign-empty-placeholder",
+                severity: .warning,
+                title: "\(Campaign.messagePlaceholder) has no messages",
+                detail: "A step types \(Campaign.messagePlaceholder) but the campaign has no messages, so the placeholder itself would be typed. Add messages in Repeat & Campaign."
+            ))
+        } else if recording.campaign == nil, recording.usesPlaceholder(Campaign.messagePlaceholder) {
+            findings.append(MacroFinding(
+                id: "campaign-empty-placeholder",
+                severity: .warning,
+                title: "\(Campaign.messagePlaceholder) has no messages",
+                detail: "A step types \(Campaign.messagePlaceholder) but the macro has no campaign messages, so the placeholder itself would be typed. Add messages in Repeat & Campaign."
+            ))
+        }
+        if playback.repeatCount == 0, hasText, hasPlainReturn, recording.campaign?.dailyLimit == nil {
+            findings.append(MacroFinding(
+                id: "loop-no-daily-limit",
+                severity: .info,
+                title: "This loop has no daily limit",
+                detail: "Left running, it keeps sending until you stop it. A daily limit (Repeat & Campaign) caps how many runs finish per day; send windows keep it to the hours you choose. Servers' own rules and slowmode still apply."
             ))
         }
 

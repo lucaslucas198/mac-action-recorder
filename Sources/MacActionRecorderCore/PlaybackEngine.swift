@@ -72,6 +72,13 @@ public enum PlaybackEvent: Equatable {
     case iterationStarted(iteration: Int, total: Int?)
     case actionStarted(index: Int)
     case progress(PlaybackProgress)
+    /// The message and channel the repetition that is about to start uses (campaigns only).
+    case campaignStep(CampaignStep)
+    /// Every step of this repetition ran.
+    case runCompleted(iteration: Int)
+    /// Waiting before the next repetition (delay between repetitions, a send window, the daily
+    /// limit), or nil when the wait is over.
+    case waiting(PlaybackWait?)
 }
 
 // MARK: - Engine
@@ -95,6 +102,8 @@ public final class PlaybackEngine {
     private var currentState: PlaybackState = .idle
     private var handler: ((PlaybackEvent) -> Void)?
     private var lastStart: (recording: Recording, config: PlaybackConfig)?
+    private let clock: () -> Date
+    private let calendar: Calendar
 
     /// - Parameter safetyCheck: called on the playback thread just before each action that sends
     ///   input (and once at the start of every repetition, with `nil`). Returning text stops the
@@ -103,11 +112,15 @@ public final class PlaybackEngine {
     public init(
         performer: ActionPerformer,
         frontmostBundleID: @escaping () -> String? = { nil },
-        safetyCheck: @escaping (MacroAction?) -> String? = { _ in nil }
+        safetyCheck: @escaping (MacroAction?) -> String? = { _ in nil },
+        clock: @escaping () -> Date = { Date() },
+        calendar: Calendar = .current
     ) {
         self.performer = performer
         self.frontmostBundleID = frontmostBundleID
         self.safetyCheck = safetyCheck
+        self.clock = clock
+        self.calendar = calendar
     }
 
     public var onEvent: ((PlaybackEvent) -> Void)? {
@@ -157,6 +170,14 @@ public final class PlaybackEngine {
         effective.repeatCount = max(1, config.repeatCount)
         effective.loopDelay = max(0, config.loopDelay.isFinite ? config.loopDelay : 0)
         effective.countdown = max(0, config.countdown)
+        if let campaign = config.campaign {
+            let problems = RecordingValidator.validate(campaign: campaign)
+            if let first = problems.first {
+                throw PlaybackError(first.message)
+            }
+            effective.campaign = campaign.isEffective ? campaign : nil
+        }
+        effective.sentToday = max(0, config.sentToday)
 
         let slice = Array(all[lower..<upper])
         effective.prefixCount = max(0, min(config.prefixCount, slice.count))
@@ -272,8 +293,18 @@ public final class PlaybackEngine {
         // Guard against a zero-length recording spinning the CPU when looping.
         let loopFloor: Double = ((total ?? 2) > 1 && estimate < 0.01) ? 0.05 : 0
         var iteration = 1
+        var sentToday = config.sentToday
+        var dayStart = calendar.startOfDay(for: clock())
 
         while true {
+            var runActions = actions
+            if let campaign = config.campaign {
+                if !waitForCampaign(run: run, campaign: campaign, sent: &sentToday, dayStart: &dayStart) { return }
+                let step = campaign.step(at: campaign.position + iteration - 1)
+                runActions = step.apply(to: actions)
+                emit(run, .campaignStep(step))
+            }
+
             emit(run, .iterationStarted(iteration: iteration, total: total))
 
             switch passChecks(nil, run: run, config: config) {
@@ -310,7 +341,7 @@ public final class PlaybackEngine {
                 return true
             }
 
-            for (offset, action) in actions.enumerated() {
+            for (offset, action) in runActions.enumerated() {
                 // The first `prefixCount` actions (opening a channel, say) run only once.
                 if iteration > 1 && offset < config.prefixCount { continue }
                 let index = firstIndex + offset
@@ -392,17 +423,68 @@ public final class PlaybackEngine {
                 )))
             }
 
+            sentToday += 1
+            emit(run, .runCompleted(iteration: iteration))
+
             if let total = total, iteration >= total {
                 break
             }
             iteration += 1
 
             let pause = max(config.loopDelay, loopFloor)
-            if !run.sleep(pause) { return }
+            if pause >= 1 {
+                emit(run, .waiting(PlaybackWait(until: clock().addingTimeInterval(pause), reason: .loopDelay)))
+                if !run.sleep(pause) { return }
+                emit(run, .waiting(nil))
+            } else if !run.sleep(pause) {
+                return
+            }
         }
 
         finish(run, with: .finished)
     }
+
+    /// Waits until the campaign lets the next repetition start: inside a send window and under
+    /// the daily limit. `sent` counts finished repetitions today and is reset at local midnight.
+    /// Stop and Pause work while waiting. Returns false if the run was cancelled.
+    private func waitForCampaign(run: Run, campaign: Campaign, sent: inout Int, dayStart: inout Date) -> Bool {
+        var announced: PlaybackWait?
+        while true {
+            let now = clock()
+            let today = calendar.startOfDay(for: now)
+            if today != dayStart {
+                dayStart = today
+                sent = 0
+            }
+            var wait: PlaybackWait?
+            if let limit = campaign.dailyLimit, sent >= limit {
+                wait = PlaybackWait(until: SendSchedule.startOfNextDay(after: now, calendar: calendar), reason: .dailyLimit)
+            } else {
+                let next = SendSchedule.nextAllowed(from: now, windows: campaign.sendWindows, calendar: calendar)
+                if next > now {
+                    wait = PlaybackWait(until: next, reason: .sendWindow)
+                }
+            }
+            guard let current = wait else {
+                if announced != nil {
+                    emit(run, .waiting(nil))
+                    // A moment for the app to bring the target app back to the front.
+                    if !run.sleep(PlaybackEngine.afterLongWait) { return false }
+                }
+                return true
+            }
+            if current != announced {
+                emit(run, .waiting(current))
+                announced = current
+            }
+            let left = current.until.timeIntervalSince(now)
+            // Short naps, so a changed clock (sleep, time zone) is noticed.
+            if !run.sleep(min(max(left, 0.05), 1.0)) { return false }
+        }
+    }
+
+    /// Pause after a send-window or daily-limit wait ends, before the repetition starts.
+    static let afterLongWait = 0.5
 
     /// Single-click holds longer than this are played as press, interruptible wait, release.
     static let splitHoldAbove = 0.25

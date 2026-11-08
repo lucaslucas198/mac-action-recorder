@@ -39,8 +39,21 @@ Recordings contain **data only**. There is no field that can run a command or sc
 | `playbackDefaults` | object, optional | `{ "speed": 1, "repeatCount": 1, "loopDelay": 0 }`. `repeatCount` 0 means loop until stopped. |
 | `targetWindow` | object, optional | `{ "x": 100, "y": 80, "width": 1200, "height": 800 }`. Position and size of the target app's front window when recording started, in the same global top-left coordinates as the actions. Playback uses it to follow a moved window and to detect a resized one. Added in app version 0.5.0. |
 | `startChannel` | string, optional | A Discord channel or person to open with the Quick Switcher (`⌘K`) before the first repetition. Added in app version 0.5.0. |
+| `campaign` | object, optional | Messages and channels that change on every repetition, send windows and a daily limit. See [Campaign](#campaign). Added after app version 0.6.1 (Mac). Older versions ignore it; the Windows app does not read it yet. |
 | `notes` | string, optional | Free text. |
 | `actions` | array | Ordered list of actions. |
+
+## Campaign
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `messages` | array of strings | Text that replaces `{message}` in `text` actions, used in order. Blank entries are skipped. At most 50. |
+| `channels` | array of strings | Text that replaces `{channel}`. When no `text` action contains `{channel}`, the app opens each channel with the Quick Switcher (`⌘K`) before every repetition. Blank entries are skipped. At most 50. |
+| `sendWindows` | array of `{ "start": minutes, "end": minutes }` | Local times of day (minutes after midnight, 0 to 1439) when a repetition may start. `end` earlier than `start` runs past midnight; `start` equal to `end` is invalid. Empty means any time. At most 8. |
+| `dailyLimit` | integer, optional | The most repetitions of this macro that may finish per local day (1 to 100000). |
+| `position` | integer | The next run in the rotation (0 = first message, first channel). Run `p` uses channel `p mod C` and message `(p div C) mod M` (C channels, M messages), so each message goes to every channel before the next message. |
+
+A damaged field inside `campaign` is dropped (treated as empty) instead of making the file unreadable. The activity log (`activity-log.json` in the app's support folder) is separate from recordings and is never exported with them.
 
 ## Actions
 

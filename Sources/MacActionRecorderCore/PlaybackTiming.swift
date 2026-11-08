@@ -33,6 +33,10 @@ public struct PlaybackConfig: Equatable {
     /// How long a failed safety check is re-checked before the run stops, in seconds. Covers an
     /// app still coming to the front after a click, or a menu or dialog still opening. 0 stops at once.
     public var safetyGrace: Double = 1.0
+    /// Rotation, send windows and daily limit. Each repetition is one run of the rotation.
+    public var campaign: Campaign?
+    /// Repetitions of this macro that already finished today (for the daily limit).
+    public var sentToday: Int = 0
 
     public init() {}
 }

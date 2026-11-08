@@ -6,6 +6,7 @@ struct RecordingInfoView: View {
     @EnvironmentObject private var model: AppModel
     @State private var nameDraft = ""
     @State private var showTarget = false
+    @State private var showCampaign = false
     @State private var showHelp = false
 
     var body: some View {
@@ -66,6 +67,26 @@ struct RecordingInfoView: View {
                     }
                 }
                 .disabled(!model.canEdit)
+
+                DisclosureGroup(isExpanded: $showCampaign) {
+                    ScrollView {
+                        CampaignEditor()
+                            .padding(.top, 6)
+                            .padding(.trailing, 8)
+                    }
+                    .frame(maxHeight: 340)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Messages & Schedule")
+                            .font(.callout.weight(.medium))
+                        Text(campaignSummary(recording))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                .disabled(!model.canEdit)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -73,6 +94,20 @@ struct RecordingInfoView: View {
             .onChange(of: recording.id) { _ in nameDraft = recording.name }
             .onChange(of: recording.name) { value in nameDraft = value }
         }
+    }
+
+    private func campaignSummary(_ recording: Recording) -> String {
+        guard let campaign = recording.campaign else { return "Off" }
+        var parts: [String] = []
+        let messages = campaign.activeMessages.count
+        let channels = campaign.activeChannels.count
+        if messages > 0 { parts.append("\(messages) message\(messages == 1 ? "" : "s")") }
+        if channels > 0 { parts.append("\(channels) channel\(channels == 1 ? "" : "s")") }
+        if !campaign.sendWindows.isEmpty {
+            parts.append(campaign.sendWindows.map { $0.displayText }.joined(separator: ", "))
+        }
+        if let limit = campaign.dailyLimit { parts.append("max \(limit)/day") }
+        return parts.isEmpty ? "Off" : parts.joined(separator: " · ")
     }
 
     private func targetSummary(_ recording: Recording) -> String {
@@ -368,6 +403,7 @@ struct PlaybackProgressView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            CampaignStatusView()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

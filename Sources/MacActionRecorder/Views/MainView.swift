@@ -19,6 +19,10 @@ struct MainView: View {
         }
         .frame(minWidth: 960, minHeight: 700)
         .animation(.easeInOut(duration: 0.35), value: model.showingWelcome)
+        .sheet(isPresented: $model.showingActivity) {
+            ActivityLogView()
+                .environmentObject(model)
+        }
     }
 
     private var workspace: some View {
@@ -52,6 +56,12 @@ struct HeaderView: View {
                 .font(.headline)
             Spacer()
             StatusIndicator()
+            Button {
+                AppModel.shared.showingActivity = true
+            } label: {
+                Label("Activity", systemImage: "list.bullet.rectangle")
+            }
+            .help("Every repetition that finished, failed or was stopped")
             Button {
                 openWindow(id: "settings")
                 NSApp.activate(ignoringOtherApps: true)

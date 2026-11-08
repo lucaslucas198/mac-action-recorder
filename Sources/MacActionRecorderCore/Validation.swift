@@ -65,6 +65,36 @@ public enum RecordingValidator {
         for (index, action) in recording.actions.enumerated() {
             issues.append(contentsOf: validate(action: action, index: index))
         }
+        if let campaign = recording.campaign {
+            issues.append(contentsOf: validate(campaign: campaign))
+        }
+        return issues
+    }
+
+    /// Checks a campaign's lists, send windows and daily limit.
+    public static func validate(campaign: Campaign) -> [ValidationIssue] {
+        var issues: [ValidationIssue] = []
+        func fail(_ message: String) {
+            issues.append(ValidationIssue(severity: .error, message: message))
+        }
+        if campaign.messages.count > Campaign.maxEntries {
+            fail("Campaign: at most \(Campaign.maxEntries) messages.")
+        }
+        if campaign.channels.count > Campaign.maxEntries {
+            fail("Campaign: at most \(Campaign.maxEntries) channels.")
+        }
+        if campaign.messages.contains(where: { $0.count > maxText }) || campaign.channels.contains(where: { $0.count > maxText }) {
+            fail("Campaign: a message or channel is too long.")
+        }
+        if campaign.sendWindows.count > Campaign.maxWindows {
+            fail("Campaign: at most \(Campaign.maxWindows) send windows.")
+        }
+        if campaign.sendWindows.contains(where: { !$0.isValid }) {
+            fail("Campaign: a send window must start and end at different times between 00:00 and 23:59.")
+        }
+        if let limit = campaign.dailyLimit, limit < 1 || limit > 100_000 {
+            fail("Campaign: the daily limit must be between 1 and 100000.")
+        }
         return issues
     }
 
