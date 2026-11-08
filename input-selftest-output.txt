@@ -1,0 +1,69 @@
+Accessibility trusted: true
+Input Monitoring (preflight): true
+TextEdit window: 79, 56, 673×439
+Calculator window: 762, 96, 230×408
+In front before recording: com.apple.calculator
+Windows under the click point, front to back: com.apple.dock layer 20 helper 1024×768; com.apple.TextEdit layer 0 app 673×439; com.apple.finder layer -2147483603 app 1024×768; com.apple.dock layer -2147483624 helper 1024×768
+PASS  the recorder started (ok)
+Raw events captured: 8; target app: TextEdit; window saved: true
+Event times from macOS's stamp: 9, from arrival: 0; largest delay before the app read an event: 5.5 ms
+  raw +0.0000 s  mouseDown(MacActionRecorderCore.MouseButton.left, clickCount: 1)
+  raw +0.0433 s  mouseUp(MacActionRecorderCore.MouseButton.left, clickCount: 1)
+  raw +0.5181 s  keyDown(keyCode: 4, modifiers: MacActionRecorderCore.KeyModifiers(rawValue: 0), characters: "h", isRepeat: false)
+  raw +0.6787 s  keyDown(keyCode: 14, modifiers: MacActionRecorderCore.KeyModifiers(rawValue: 0), characters: "e", isRepeat: false)
+  raw +0.8997 s  keyDown(keyCode: 37, modifiers: MacActionRecorderCore.KeyModifiers(rawValue: 0), characters: "l", isRepeat: false)
+  raw +1.0619 s  keyDown(keyCode: 37, modifiers: MacActionRecorderCore.KeyModifiers(rawValue: 0), characters: "l", isRepeat: false)
+  raw +1.3035 s  keyDown(keyCode: 31, modifiers: MacActionRecorderCore.KeyModifiers(rawValue: 0), characters: "o", isRepeat: false)
+  raw +1.9543 s  keyDown(keyCode: 36, modifiers: MacActionRecorderCore.KeyModifiers(rawValue: 0), characters: "\r", isRepeat: false)
+  sent: +0.0000 +0.5178 +0.6783 +0.8991 +1.0616 +1.3033 +1.9541
+   1  +0.000 s  Left click at (416, 319), took 0.043 s
+   2  +0.475 s  Type “hello”, took 0.786 s
+   3  +0.650 s  Press Return
+Click position error: 0.00 points
+PASS  the click was recorded at the position it happened (within 1 point)
+PASS  the typed word was recorded as text (got "hello")
+PASS  Return was recorded as a key press
+PASS  TextEdit (the app that was clicked, not the one in front) was recorded as the target app
+PASS  the click knows it went to TextEdit (got com.apple.TextEdit)
+PASS  the click knows which TextEdit window it was in
+PASS  the typing knows it went to TextEdit
+PASS  the TextEdit window position was saved
+Click to first letter: sent 0.5178 s, recorded 0.5180 s
+Click to Return: sent 1.9541 s, recorded 1.9540 s
+Largest timing error while recording: 0.2 ms
+PASS  the recorded timeline is within 20 ms of when the input was really sent
+Document after recording: "Hello\n"
+PASS  the document holds what was typed while recording
+Run at 1×, TextEdit in front; in front now: com.apple.TextEdit
+Playback at 1×: finished in 2.078 s (recorded length 1.954 s, so about 1.954 s expected)
+PASS  playback at 1× finished with the step checks on
+Playback at 1×: click to first letter 0.5207 s (recorded 0.5180 s), click to Return 1.9219 s (recorded 1.9540 s), largest difference 32.1 ms
+  handed to macOS: click step +0.0000 s, first letter +0.5534 s, Return +1.9546 s (from the click step); the system passed the press on 33.3 ms and the first letter 0.6 ms after handing over
+Run at 1×, TextEdit in front; in front now: com.apple.TextEdit
+Playback at 1×: finished in 2.109 s (recorded length 1.954 s, so about 1.954 s expected)
+PASS  playback at 1× finished with the step checks on
+Playback at 1×: click to first letter 0.5269 s (recorded 0.5180 s), click to Return 1.9657 s (recorded 1.9540 s), largest difference 11.7 ms
+  handed to macOS: click step +0.0000 s, first letter +0.5531 s, Return +1.9891 s (from the click step); the system passed the press on 27.0 ms and the first letter 0.8 ms after handing over
+Run at 1×, TextEdit in front; in front now: com.apple.TextEdit
+Playback at 1×: finished in 2.031 s (recorded length 1.954 s, so about 1.954 s expected)
+PASS  playback at 1× finished with the step checks on
+Playback at 1×: click to first letter 0.5443 s (recorded 0.5180 s), click to Return 1.9801 s (recorded 1.9540 s), largest difference 26.3 ms
+  handed to macOS: click step +0.0000 s, first letter +0.5565 s, Return +1.9899 s (from the click step); the system passed the press on 14.0 ms and the first letter 1.8 ms after handing over
+Run at 2×, TextEdit in front; in front now: com.apple.TextEdit
+Playback at 2×: finished in 1.026 s (recorded length 1.954 s, so about 0.977 s expected)
+PASS  playback at 2× finished with the step checks on
+Playback at 2×: click to first letter 0.2398 s (recorded 0.2590 s), click to Return 0.9645 s (recorded 0.9770 s), largest difference 19.2 ms
+  handed to macOS: click step +0.0000 s, first letter +0.2706 s, Return +0.9897 s (from the click step); the system passed the press on 33.5 ms and the first letter 2.7 ms after handing over
+Run at 1×, another app in front (the click switches to TextEdit); in front now: com.apple.calculator
+Playback at 1×: finished in 2.067 s (recorded length 1.954 s, so about 1.954 s expected)
+PASS  playback at 1× with another app in front finished with the step checks on
+Playback at 1×: click to first letter 0.5270 s (recorded 0.5180 s), click to Return 1.9272 s (recorded 1.9540 s), largest difference 26.8 ms
+  handed to macOS: click step +0.0000 s, first letter +0.5557 s, Return +1.9564 s (from the click step); the system passed the press on 31.3 ms and the first letter 2.6 ms after handing over
+Document after playback: "Hello\nHello\nHello\nHello\nHello\nHello\n"
+PASS  every playback typed the same text into the same document
+Playback at 1×: largest difference per run 11.7, 26.3, 32.1 ms; median 26.3 ms
+PASS  playback at 1× followed the recorded timeline within 30 ms (median of the runs)
+Playback at 2×: largest difference per run 19.2 ms; median 19.2 ms
+PASS  playback at 2× followed the recorded timeline within 30 ms (median of the runs)
+ALL PASSED
+Exit status: 0
